@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:        #111923;
+  --bg2:       #18222E;
+  --bg3:       #1E2B3A;
+  --bg4:       #243344;
+  --bg5:       #2C3E52;
+  --gold:      #C9A84C;
+  --gold2:     #E2C06A;
+  --gold3:     #A8882E;
+  --goldd:     rgba(201,168,76,0.12);
+  --teal:      #2DD4BF;
+  --teal2:     #1EBFAA;
+  --teald:     rgba(45,212,191,0.12);
+  --rose:      #E07B8A;
+  --green:     #4ADE80;
+  --border:    rgba(201,168,76,0.10);
+  --border2:   rgba(201,168,76,0.20);
+  --text:      #EEE8D8;
+  --text2:     #8E8B7A;
+  --text3:     #4A4838;
+  --off-white: #F5F2EC;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 3px; }
+
+/* Gold gradient text utility */
+.text-gold-gradient {
+  background: linear-gradient(135deg, var(--gold), var(--gold2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow utility */
+.gold-glow {
+  box-shadow: 0 4px 20px rgba(201,168,76,0.18);
+}
+.gold-glow-lg {
+  box-shadow: 0 8px 32px rgba(201,168,76,0.25);
+}
+
+/* Card lift utility */
+.card-lift {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18), 0 1px 3px rgba(201,168,76,0.06);
+  transition: all 0.2s ease;
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.22), 0 4px 12px rgba(201,168,76,0.12);
+}
+
+/* Fade-up animation */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.5s ease forwards;
+}
+.animate-fade-up-1 { animation: fadeUp 0.5s 0.1s ease both; }
+.animate-fade-up-2 { animation: fadeUp 0.5s 0.2s ease both; }
+.animate-fade-up-3 { animation: fadeUp 0.5s 0.3s ease both; }
+.animate-fade-up-4 { animation: fadeUp 0.5s 0.4s ease both; }
+
+/* Page enter animation */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageIn 0.35s ease forwards;
+}
+
+/* Pulse for AI orb */
+@keyframes orbPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(201,168,76,0.3); }
+  50%       { box-shadow: 0 0 20px rgba(201,168,76,0.5), 0 0 40px rgba(45,212,191,0.2); }
+}
+.orb-pulse {
+  animation: orbPulse 3s ease-in-out infinite;
+}
+
+/* Typing dots */
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-6px); }
+}
+.typing-dot {
+  animation: typingBounce 1.4s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Progress bar fill animation */
+@keyframes fillBar {
+  from { width: 0%; }
+}
+.bar-fill {
+  animation: fillBar 1.2s ease forwards;
+}
+
+/* Shimmer loading */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
