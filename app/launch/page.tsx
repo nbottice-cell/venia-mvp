@@ -140,9 +140,8 @@ export default function LaunchPage() {
     try {
       const result = await aiAnalyzeIdea(rawIdea)
       setReflection(result)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setReflectionError(`Error: ${msg}`)
+    } catch {
+      setReflectionError('Something went wrong analyzing your idea. Please try again.')
     } finally {
       setReflectionLoading(false)
     }
@@ -214,10 +213,9 @@ export default function LaunchPage() {
         ])
         setPromptIndex(nextIndex)
       }
-    } catch (err) {
+    } catch {
       setAiTyping(false)
-      const msg = err instanceof Error ? err.message : String(err)
-      setChat(prev => [...prev, { role: 'ai', text: `[DEBUG] Error: ${msg}` }])
+      setChat(prev => [...prev, { role: 'ai', text: "Something went wrong on my end — give it another try in a moment." }])
     }
   }
 

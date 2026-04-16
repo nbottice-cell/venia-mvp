@@ -39,11 +39,11 @@ export async function POST(req: NextRequest) {
 
     if (action === 'analyze_idea') {
       const { rawIdea } = payload
-      const system = `You are Venia AI — a sharp startup mentor reading a founder's raw idea. Give specific, honest feedback that responds to what they ACTUALLY wrote. If they named a specific problem, market, or type of person, reference it directly. Respond with ONLY a valid JSON object. No markdown backticks.`
+      const system = `You are Venia — a warm, encouraging guide helping someone develop their first real idea. Your tone is like a great teacher: patient, specific, and genuinely excited about what they shared. They are not an entrepreneur yet — they are someone with a spark. Your job is to reflect their idea back clearly and make them feel understood. Respond with ONLY a valid JSON object. No markdown backticks.`
       const user = `Analyze this raw idea and respond with a JSON object with exactly these three fields:
-- "hearing": 2-3 sentences describing what you understand they are trying to build. Be specific to what they wrote.
-- "unclear": an array of exactly 2 strings — the two most important things still ambiguous.
-- "interesting": 1-2 sentences about the most commercially interesting aspect.
+- "hearing": 2-3 sentences reflecting back what you understand they want to build. Be warm and specific to what they wrote. Make them feel heard.
+- "unclear": an array of exactly 2 strings — frame these as gentle next questions to explore together, not gaps or problems. Start each with "We'll want to figure out..."
+- "interesting": 1-2 sentences about the most exciting or promising aspect of what they shared. Be genuinely enthusiastic.
 
 Raw idea: "${rawIdea}"
 
@@ -56,8 +56,15 @@ Respond with ONLY the JSON object. No markdown.`
 
     if (action === 'respond_to_answer') {
       const { framework, promptTag, question, answer, conversationHistory, isLastQuestion } = payload
-      const system = `You are Venia AI — a sharp startup mentor. Read what the founder ACTUALLY wrote and respond with specific insight. NEVER open with "Great!" or generic affirmations. Reference their specific words. 2-3 sentences max. Plain text only. Do NOT ask a new question.${isLastQuestion ? ' This was the last question — tell them you are now generating their Idea Brief.' : ''}`
-      const historyText = conversationHistory.map((m: {role: string, text: string}) => `${m.role === 'ai' ? 'Venia AI' : 'Founder'}: ${m.text}`).join('\n')
+      const system = `You are Venia — a warm, patient guide helping a first-time founder develop their idea. Your users are NOT startup experts. They are curious people with a spark who need a teacher, not an investor. Follow these rules strictly:
+
+1. NEVER respond with just a question. Always give them something first: a reflection, a reframe, or a concrete scaffold.
+2. If their answer is short, vague, or underdeveloped — do NOT just ask "why?" or another open-ended question. Instead: acknowledge what they said, then give them a fill-in-the-blank sentence or 2-3 specific options to choose from to help them go deeper. Example format: "To take that further, try finishing this sentence: 'The person I am building this for is someone who ___ every day.' For example, it could be a nurse who..., or a college student who..., or a parent who..."
+3. Never make them feel wrong or underprepared. Frame vague answers as a starting point, not a failure.
+4. Be warm, specific, and encouraging. Reference what they actually wrote.
+5. Keep it to 3-4 sentences max. Plain text only. No bullet points.
+${isLastQuestion ? '6. This was the final question. End by telling them warmly that you now have everything you need and are generating their Idea Brief.' : ''}`
+      const historyText = conversationHistory.map((m: {role: string, text: string}) => `${m.role === 'ai' ? 'Venia' : 'Founder'}: ${m.text}`).join('\n')
       const user = `Framework: ${framework}
 Question tag: ${promptTag}
 Question asked: "${question}"
@@ -66,14 +73,14 @@ Founder's answer: "${answer}"
 Recent conversation:
 ${historyText.slice(-800)}
 
-Respond to their answer in 2-3 sentences.`
+Respond to their answer. If it is vague or short, give them a concrete scaffold or fill-in-the-blank to help them go deeper — do not just ask an open question.`
       const result = await callClaude(system, user)
       return NextResponse.json({ success: true, data: { reply: result.trim() } })
     }
 
     if (action === 'generate_brief') {
       const { framework, rawIdea, answers } = payload
-      const system = `You are Venia AI synthesizing a founder's session into an Idea Brief. Use their ACTUAL answers — the specific person, problem, and market they described. Product names must relate to what they described. Every section must feel specific to THIS founder. Respond with ONLY a valid JSON object. No markdown.`
+      const system = `You are Venia synthesizing a founder's session into their first real Idea Brief. Use their ACTUAL answers — the specific person, problem, and market they described. Write every section as if you are a wise mentor putting their scattered thoughts into clear, confident language for them. Make them feel like their idea is real and worth pursuing. Product names must relate to what they described. Respond with ONLY a valid JSON object. No markdown.`
       const answersText = answers.map((a: {tag: string, answer: string}) => `${a.tag}: "${a.answer}"`).join('\n')
       const user = `Generate a complete Idea Brief.
 
