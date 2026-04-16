@@ -28,7 +28,7 @@ const PROMPTS: Record<string, {q: string, tag: string}[]> = {
   skill: [
     { q: "What is something you know how to do that takes most people significantly longer to learn?", tag: "The Expertise" },
     { q: "What topic do you find yourself explaining to people repeatedly because you know more than those around you?", tag: "The Dinner Table" },
-    { q: "Is there something people clearly want and would pay for, but the cheap version is too limited and the good version is too expensive?", tag: "The Pricing Gap" },
+    { q: "Is there something people clearly want and would pay for, but the cheap version is too limited and the good version costs too much?", tag: "The Pricing Gap" },
     { q: "What is something people quietly need but feel awkward admitting in public?", tag: "The Private Need" },
     { q: "What do you have — connections, knowledge, lived experience — that most people in your space would not have?", tag: "Unfair Advantage" },
   ],
@@ -55,13 +55,59 @@ const PROMPTS: Record<string, {q: string, tag: string}[]> = {
   ],
 }
 
-const AI_REPLIES = [
-  ["That is specific — and specific is exactly what we need. Most people describe this problem in generalities. You went straight to the friction point.", "That level of detail separates an idea from a product. You are not describing a category — you are describing a real moment."],
-  ["That person sounds real. When you can describe one human this clearly, you have done more customer research than most founders who raise their first $50K.", "What you described is a story, not a demographic. Stories are what get people to open their wallets."],
-  ["That is the insight. The ideal you described is not far away — it is just that no one has assembled the right pieces yet. That gap is your opportunity.", "Most people describe a feature when I ask this. You described a feeling. That is the right answer."],
-  ["Good instinct. That shape has a clear monetization path and a direct line to the person you described.", "Noted. That form will inform whether Build or License Mode makes more sense."],
-  ["That is the moat. What you just said is what will be on your Idea Brief under Unfair Advantage — the thing an investor will remember long after the meeting.", "Most people skip this question. You did not. That insight is what makes this defensible."],
-]
+// ── AI API HELPERS ──
+async function aiAnalyzeIdea(rawIdea: string) {
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'analyze_idea', payload: { rawIdea } }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error)
+  return data.data as { hearing: string, unclear: string[], interesting: string }
+}
+
+async function aiRespondToAnswer(
+  framework: string,
+  promptTag: string,
+  question: string,
+  answer: string,
+  conversationHistory: {role: string, text: string}[],
+  isLastQuestion: boolean
+) {
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'respond_to_answer',
+      payload: { framework, promptTag, question, answer, conversationHistory, isLastQuestion },
+    }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error)
+  return data.data.reply as string
+}
+
+async function aiGenerateBrief(
+  framework: string,
+  rawIdea: string,
+  answers: {tag: string, answer: string}[]
+) {
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'generate_brief',
+      payload: { framework, rawIdea, answers },
+    }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error)
+  return data.data as {
+    names: string[], pitch: string, problem: string,
+    solution: string, customer: string, whyNow: string, unfairAdvantage: string
+  }
+}
 
 export default function LaunchPage() {
   const router = useRouter()
@@ -70,34 +116,35 @@ export default function LaunchPage() {
   const [rawIdea, setRawIdea] = useState('')
   const [reflection, setReflection] = useState<{hearing: string, unclear: string[], interesting: string} | null>(null)
   const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [reflectionError, setReflectionError] = useState('')
   const [promptIndex, setPromptIndex] = useState(0)
   const [answers, setAnswers] = useState<{tag: string, answer: string}[]>([])
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [chat, setChat] = useState<{role: 'ai' | 'user', text: string}[]>([])
   const [aiTyping, setAiTyping] = useState(false)
-  const [brief, setBrief] = useState<{names: string[], pitch: string, problem: string, solution: string, whyNow: string} | null>(null)
+  const [briefLoading, setBriefLoading] = useState(false)
+  const [brief, setBrief] = useState<{names: string[], pitch: string, problem: string, solution: string, customer: string, whyNow: string, unfairAdvantage: string} | null>(null)
   const [ideaName, setIdeaName] = useState('')
   const [saving, setSaving] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat, aiTyping])
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat, aiTyping, briefLoading])
 
   const prompts = framework ? PROMPTS[framework] : []
 
-  function analyzeIdea() {
+  // ── REAL AI: Analyze raw idea ──
+  async function analyzeIdea() {
     if (rawIdea.trim().length < 10) return
     setReflectionLoading(true)
-    setTimeout(() => {
-      const kw = rawIdea.toLowerCase()
-      if (kw.includes('app') || kw.includes('platform') || kw.includes('tool')) {
-        setReflection({ hearing: "You are building a software tool that solves a friction point in someone's workflow — saving time or reducing effort in a process that requires too many steps.", unclear: ["Whether the primary user is a consumer or a business — those are fundamentally different products.", "What the done state looks like for your user. When have they succeeded?"], interesting: "Software tools that solve workflow problems have the fastest path to first revenue on Venia." })
-      } else if (kw.includes('food') || kw.includes('health') || kw.includes('wellness')) {
-        setReflection({ hearing: "You are building something in the health or food space — a product that changes how people consume, track, or relate to something physical.", unclear: ["Whether this is a physical product, a subscription, or a digital companion.", "Who the early adopter is — health products succeed fastest when the first 100 users are already obsessed with the problem."], interesting: "Health and food products attract strong community support early — vocal advocates when they find something that works." })
-      } else {
-        setReflection({ hearing: "You are building something that connects people or removes a barrier between someone who has a need and the thing that would satisfy it.", unclear: ["What specifically makes your version different from what already exists.", "Whether the value is in the discovery, the transaction, or the relationship after."], interesting: "Ideas at the intersection of a real frustration and an undisrupted market validate fastest — the community responds to specificity." })
-      }
+    setReflectionError('')
+    try {
+      const result = await aiAnalyzeIdea(rawIdea)
+      setReflection(result)
+    } catch {
+      setReflectionError('Something went wrong analyzing your idea. Please try again.')
+    } finally {
       setReflectionLoading(false)
-    }, 1800)
+    }
   }
 
   function startPrompts(fw?: Framework) {
@@ -110,45 +157,66 @@ export default function LaunchPage() {
     setStage('prompts')
   }
 
-  function sendAnswer() {
+  // ── REAL AI: Respond to each answer ──
+  async function sendAnswer() {
     if (!currentAnswer.trim() || aiTyping || !framework) return
     const answer = currentAnswer.trim()
     setCurrentAnswer('')
+
     const newChat = [...chat, { role: 'user' as const, text: answer }]
     setChat(newChat)
     const newAnswers = [...answers, { tag: prompts[promptIndex].tag, answer }]
     setAnswers(newAnswers)
     setAiTyping(true)
-    const pool = AI_REPLIES[Math.min(promptIndex, AI_REPLIES.length - 1)]
-    const reply = pool[Math.floor(Math.random() * pool.length)]
-    setTimeout(() => {
-      setAiTyping(false)
-      const next = promptIndex + 1
-      if (next >= prompts.length) {
-        setChat(prev => [...prev, { role: 'ai', text: reply }])
-        setTimeout(() => makeBrief(newAnswers), 500)
-      } else {
-        setChat(prev => [...prev, { role: 'ai', text: reply }, { role: 'ai', text: prompts[next].q }])
-        setPromptIndex(next)
-      }
-    }, 1400 + Math.random() * 600)
-  }
 
-  function makeBrief(allAnswers: {tag: string, answer: string}[]) {
-    const a1 = allAnswers[0]?.answer || 'a specific daily frustration'
-    const a2 = allAnswers[1]?.answer || 'current solutions are fragmented'
-    const a3 = allAnswers[2]?.answer || 'a seamless intuitive experience'
-    const a5 = allAnswers[4]?.answer || 'lived experience from inside this community'
-    const words = rawIdea.split(' ').filter(w => w.length > 4)
-    const w = words[0] || 'Idea'
-    setBrief({
-      names: [`${w}OS`, `${w}Flow`, `Open${w}`].map(n => n.charAt(0).toUpperCase() + n.slice(1)),
-      pitch: `A platform that solves ${a1.substring(0, 60)}… by removing the friction that makes this too hard for the people who need it most.`,
-      problem: `${a2.substring(0, 120)}. People most affected have no good option — existing solutions are too expensive, too generic, or built without their real needs in mind.`,
-      solution: `${a3.substring(0, 120)}. Built around the insight that ${a5.substring(0, 80)}.`,
-      whyNow: 'The technology to deliver this properly now exists for the first time. The window to establish a first-mover position is open today.',
-    })
-    setStage('brief')
+    const isLast = promptIndex + 1 >= prompts.length
+
+    try {
+      const reply = await aiRespondToAnswer(
+        framework,
+        prompts[promptIndex].tag,
+        prompts[promptIndex].q,
+        answer,
+        newChat,
+        isLast
+      )
+
+      setAiTyping(false)
+
+      if (isLast) {
+        setChat(prev => [...prev, { role: 'ai', text: reply }])
+        setBriefLoading(true)
+        setStage('brief')
+        setTimeout(async () => {
+          try {
+            const briefData = await aiGenerateBrief(framework, rawIdea, newAnswers)
+            setBrief(briefData)
+          } catch {
+            setBrief({
+              names: ['YourIdea', 'IdeaFlow', 'OpenIdea'],
+              pitch: 'A solution built around the problem you described.',
+              problem: 'The problem you described affects many people who currently have no good option.',
+              solution: 'Your solution addresses this directly using your unique insight.',
+              customer: 'The specific person you described throughout this session.',
+              whyNow: 'The conditions to build this successfully exist today.',
+              unfairAdvantage: 'Your lived experience gives you insight no outsider could replicate.',
+            })
+          } finally {
+            setBriefLoading(false)
+          }
+        }, 300)
+      } else {
+        const nextIndex = promptIndex + 1
+        setChat(prev => [...prev,
+          { role: 'ai', text: reply },
+          { role: 'ai', text: prompts[nextIndex].q }
+        ])
+        setPromptIndex(nextIndex)
+      }
+    } catch {
+      setAiTyping(false)
+      setChat(prev => [...prev, { role: 'ai', text: "I had trouble processing that. Can you say a bit more?" }])
+    }
   }
 
   async function saveIdea(path: 'build' | 'license') {
@@ -180,6 +248,7 @@ export default function LaunchPage() {
     }
   }
 
+  // ── STYLES ──
   const navStyle = { height: '52px', background: 'rgba(245,242,236,0.97)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(201,168,76,0.18)', boxShadow: '0 1px 8px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '14px', position: 'sticky' as const, top: 0, zIndex: 50 }
   const backBtn = { background: 'none', border: 'none', cursor: 'pointer', color: '#4A5A6C', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }
   const navTitle = { fontFamily: "'Playfair Display', serif", fontSize: '16px', fontWeight: '600', color: '#1A2332', flex: 1 }
@@ -245,7 +314,10 @@ export default function LaunchPage() {
               <label style={label}>Your idea</label>
               <textarea value={rawIdea} onChange={(e) => setRawIdea(e.target.value)} placeholder="I have been thinking about building something that helps people who… The problem I keep seeing is…" style={{ ...inputStyle, minHeight: '140px', resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
             </div>
-            <button onClick={analyzeIdea} disabled={rawIdea.length < 10 || reflectionLoading} style={{ ...goldBtn, width: '100%', opacity: rawIdea.length < 10 ? 0.5 : 1 }}>{reflectionLoading ? 'Analyzing…' : 'Analyze My Idea →'}</button>
+            <button onClick={analyzeIdea} disabled={rawIdea.length < 10 || reflectionLoading} style={{ ...goldBtn, width: '100%', opacity: rawIdea.length < 10 ? 0.5 : 1 }}>
+              {reflectionLoading ? '✦ Analyzing your idea…' : 'Analyze My Idea →'}
+            </button>
+            {reflectionError && <div style={{ marginTop: '10px', color: '#E07B8A', fontSize: '12px', textAlign: 'center' }}>{reflectionError}</div>}
           </div>
 
           {reflection && (
@@ -316,17 +388,17 @@ export default function LaunchPage() {
           </div>
 
           {chat.length > 1 && (
-            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
+            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
               {chat.slice(1).map((msg, i) => (
                 <div key={i} style={{ display: 'flex', gap: '8px', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0, background: msg.role === 'ai' ? 'linear-gradient(135deg, #C9A84C, #2DD4BF)' : 'linear-gradient(135deg, #C9A84C, #E07B8A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923' }}>{msg.role === 'ai' ? 'V' : 'Me'}</div>
-                  <div style={{ maxWidth: '82%', padding: '10px 13px', fontSize: '13px', lineHeight: '1.6', background: msg.role === 'ai' ? '#18222E' : 'rgba(201,168,76,0.12)', border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(201,168,76,0.2)', color: msg.role === 'ai' ? '#8E8B7A' : '#EEE8D8', borderRadius: msg.role === 'ai' ? '4px 10px 10px 10px' : '10px 4px 10px 10px' }}>{msg.text}</div>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, background: msg.role === 'ai' ? 'linear-gradient(135deg, #C9A84C, #2DD4BF)' : 'linear-gradient(135deg, #C9A84C, #E07B8A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923' }}>{msg.role === 'ai' ? 'V' : 'Me'}</div>
+                  <div style={{ maxWidth: '82%', padding: '10px 13px', fontSize: '13px', lineHeight: '1.65', background: msg.role === 'ai' ? '#18222E' : 'rgba(201,168,76,0.18)', border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(201,168,76,0.2)', color: msg.role === 'ai' ? '#C8C4B4' : '#1A2332', borderRadius: msg.role === 'ai' ? '4px 10px 10px 10px' : '10px 4px 10px 10px' }}>{msg.text}</div>
                 </div>
               ))}
               {aiTyping && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #2DD4BF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923', flexShrink: 0 }}>V</div>
-                  <div style={{ padding: '12px 16px', borderRadius: '4px 10px 10px 10px', background: '#18222E', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #2DD4BF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923', flexShrink: 0 }}>V</div>
+                  <div style={{ padding: '14px 16px', borderRadius: '4px 10px 10px 10px', background: '#18222E', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '5px', alignItems: 'center' }}>
                     {[0,1,2].map(i => <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4A4838', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
                   </div>
                 </div>
@@ -336,52 +408,76 @@ export default function LaunchPage() {
           )}
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <textarea value={currentAnswer} onChange={(e) => setCurrentAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }} placeholder="Type your answer… (Enter to send)" disabled={aiTyping} rows={2} style={{ flex: 1, padding: '11px 13px', background: '#18222E', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", resize: 'none' } as React.CSSProperties} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
-            <button onClick={sendAnswer} disabled={!currentAnswer.trim() || aiTyping} style={{ width: '44px', height: '44px', borderRadius: '10px', background: !currentAnswer.trim() || aiTyping ? 'rgba(201,168,76,0.3)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', border: 'none', cursor: !currentAnswer.trim() || aiTyping ? 'not-allowed' : 'pointer', color: '#111923', fontSize: '16px', flexShrink: 0, alignSelf: 'flex-end' }}>→</button>
+            <textarea value={currentAnswer} onChange={(e) => setCurrentAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }} placeholder="Type your answer… (Enter to send)" disabled={aiTyping} rows={2} style={{ flex: 1, padding: '11px 13px', background: '#18222E', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", resize: 'none', opacity: aiTyping ? 0.6 : 1 } as React.CSSProperties} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
+            <button onClick={sendAnswer} disabled={!currentAnswer.trim() || aiTyping} style={{ width: '44px', height: '44px', borderRadius: '10px', background: !currentAnswer.trim() || aiTyping ? 'rgba(201,168,76,0.3)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', border: 'none', cursor: !currentAnswer.trim() || aiTyping ? 'not-allowed' : 'pointer', color: '#111923', fontSize: '18px', flexShrink: 0, alignSelf: 'flex-end' }}>→</button>
           </div>
           <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
         </div>
       )}
 
       {/* ── BRIEF ── */}
-      {stage === 'brief' && brief && (
+      {stage === 'brief' && (
         <div style={wrap}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={eyebrow}>✦ Your Idea Brief</div>
-            <h1 style={{ ...h1, textAlign: 'center' }}>Your idea is <em style={{ fontStyle: 'italic', color: '#C9A84C' }}>real</em> now.</h1>
-            <p style={{ ...sub, textAlign: 'center' }}>Everything we built together, ready to launch or license today.</p>
+            <h1 style={{ ...h1, textAlign: 'center' }}>
+              {briefLoading ? 'Building your brief…' : <>Your idea is <em style={{ fontStyle: 'italic', color: '#C9A84C' }}>real</em> now.</>}
+            </h1>
+            <p style={{ ...sub, textAlign: 'center' }}>
+              {briefLoading ? 'Venia AI is synthesizing everything you shared into a structured Idea Brief.' : 'Everything we built together, ready to launch or license today.'}
+            </p>
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={label}>Choose a name</label>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-              {brief.names.map(name => (
-                <button key={name} onClick={() => setIdeaName(name)} style={{ padding: '8px 16px', borderRadius: '8px', background: ideaName === name ? 'rgba(201,168,76,0.12)' : '#18222E', border: `1px solid ${ideaName === name ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`, color: ideaName === name ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>{name}</button>
-              ))}
+          {briefLoading && (
+            <div style={{ ...card, textAlign: 'center', padding: '48px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '16px' }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#C9A84C', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+              </div>
+              <div style={{ color: '#8E8B7A', fontSize: '13px', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>Generating your Idea Brief…</div>
+              <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }`}</style>
             </div>
-            <input type="text" value={ideaName} onChange={(e) => setIdeaName(e.target.value)} placeholder="Or type your own name…" style={inputStyle} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
-          </div>
+          )}
 
-          <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.16)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(201,168,76,0.08), rgba(45,212,191,0.04))', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '6px', padding: '3px 10px', marginBottom: '10px', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C9A84C' }}>✨ AI Create Mode</div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '24px', fontWeight: '600', color: '#EEE8D8', marginBottom: '8px' }}>{ideaName || brief.names[0]}</div>
-              <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6' }}>{brief.pitch}</p>
-            </div>
-            <div style={{ padding: '24px' }}>
-              {[{ label: 'The Problem', text: brief.problem }, { label: 'The Solution', text: brief.solution }, { label: 'Why Now', text: brief.whyNow }].map((s, i) => (
-                <div key={i} style={{ marginBottom: i < 2 ? '18px' : '0', paddingBottom: i < 2 ? '18px' : '0', borderBottom: i < 2 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#4A4838', marginBottom: '7px' }}>{s.label}</div>
-                  <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.7' }}>{s.text}</p>
+          {brief && !briefLoading && (
+            <>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={label}>Choose a name</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  {brief.names.map(name => (
+                    <button key={name} onClick={() => setIdeaName(name)} style={{ padding: '8px 16px', borderRadius: '8px', background: ideaName === name ? 'rgba(201,168,76,0.12)' : '#18222E', border: `1px solid ${ideaName === name ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`, color: ideaName === name ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>{name}</button>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div style={{ padding: '18px 24px', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button onClick={() => saveIdea('build')} disabled={saving} style={{ ...goldBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '⚡ Build Mode'}</button>
-              <button onClick={() => saveIdea('license')} disabled={saving} style={{ background: 'linear-gradient(135deg, #2DD4BF, #1EBFAA)', color: '#111923', border: 'none', padding: '13px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{saving ? 'Saving…' : '🏛️ License Mode'}</button>
-            </div>
-            <div style={{ padding: '10px 24px 14px', textAlign: 'center', background: 'rgba(0,0,0,0.15)', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.08em', color: 'rgba(74,72,56,0.4)' }}>Saved as a draft — you choose when to publish</div>
-          </div>
+                <input type="text" value={ideaName} onChange={(e) => setIdeaName(e.target.value)} placeholder="Or type your own name…" style={inputStyle} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
+              </div>
+
+              <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.16)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                <div style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(201,168,76,0.08), rgba(45,212,191,0.04))', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '6px', padding: '3px 10px', marginBottom: '10px', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C9A84C' }}>✨ AI Create Mode</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '24px', fontWeight: '600', color: '#EEE8D8', marginBottom: '8px' }}>{ideaName || brief.names[0]}</div>
+                  <p style={{ fontSize: '14px', color: '#C8C4B4', lineHeight: '1.6', fontStyle: 'italic' }}>{brief.pitch}</p>
+                </div>
+                <div style={{ padding: '24px' }}>
+                  {[
+                    { label: 'The Problem', text: brief.problem },
+                    { label: 'The Solution', text: brief.solution },
+                    { label: 'Who It Is For', text: brief.customer },
+                    { label: 'Why Now', text: brief.whyNow },
+                    { label: 'Your Unfair Advantage', text: brief.unfairAdvantage },
+                  ].map((s, i, arr) => (
+                    <div key={i} style={{ marginBottom: i < arr.length - 1 ? '18px' : '0', paddingBottom: i < arr.length - 1 ? '18px' : '0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '7px', opacity: 0.7 }}>{s.label}</div>
+                      <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.75' }}>{s.text}</p>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: '18px 24px', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button onClick={() => saveIdea('build')} disabled={saving} style={{ ...goldBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '⚡ Build Mode'}</button>
+                  <button onClick={() => saveIdea('license')} disabled={saving} style={{ background: 'linear-gradient(135deg, #2DD4BF, #1EBFAA)', color: '#111923', border: 'none', padding: '13px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", width: '100%' }}>{saving ? 'Saving…' : '🏛️ License Mode'}</button>
+                </div>
+                <div style={{ padding: '10px 24px 14px', textAlign: 'center', background: 'rgba(0,0,0,0.15)', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.08em', color: 'rgba(201,168,76,0.3)' }}>Saved as a draft — you choose when to publish</div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
