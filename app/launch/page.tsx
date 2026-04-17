@@ -225,21 +225,23 @@ export default function LaunchPage() {
       const { data: userData } = await supabase.auth.getUser()
       if (!userData.user) { router.push('/auth'); return }
       if (!brief) return
-      const { error } = await supabase.from('ideas').insert({
+      const { data: inserted, error } = await supabase.from('ideas').insert({
         user_id: userData.user.id,
         name: ideaName || brief.names[0],
         pitch: brief.pitch,
         problem: brief.problem,
         solution: brief.solution,
+        customer: brief.customer,
+        unfair_advantage: brief.unfairAdvantage,
         why_now: brief.whyNow,
         path,
         framework: framework || 'guided',
         raw_idea: rawIdea || null,
         answers,
         status: 'draft',
-      })
+      }).select('id').single()
       if (error) throw error
-      router.push('/browse')
+      router.push(`/ideas/${inserted.id}`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       alert('Error saving: ' + message)

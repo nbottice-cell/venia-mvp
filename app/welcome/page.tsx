@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 
 const doors = [
   { id: 'learn', icon: '✦', title: 'Learn About Venia', subtitle: 'New here?', desc: 'Discover what Venia is, how it works, and the different ways you can use it to go from idea to income.', color: '#C9A84C', colorDim: 'rgba(201,168,76,0.10)', colorBorder: 'rgba(201,168,76,0.30)', tag: 'Start Here', path: '/learn' },
-  { id: 'browse', icon: '⬡', title: 'Browse Ideas', subtitle: 'Get inspired', desc: 'Explore ideas posted by other founders. Support concepts you believe in and see what the community is building.', color: '#2DD4BF', colorDim: 'rgba(45,212,191,0.10)', colorBorder: 'rgba(45,212,191,0.30)', tag: 'Explore', path: '/browse' },
+  { id: 'ideas', icon: '◎', title: 'My Ideas', subtitle: 'Your work', desc: 'View, edit, and build on the ideas you have already created. All your briefs in one place.', color: '#2DD4BF', colorDim: 'rgba(45,212,191,0.10)', colorBorder: 'rgba(45,212,191,0.30)', tag: 'My Work', path: '/ideas' },
   { id: 'launch', icon: '◈', title: 'Launch an Idea', subtitle: 'Ready to build?', desc: 'Have an idea already, or want to find one? AI walks you through every step from raw concept to a live listing.', color: '#E2C06A', colorDim: 'rgba(226,192,106,0.10)', colorBorder: 'rgba(226,192,106,0.30)', tag: 'Create', path: '/launch' },
 ]
 
