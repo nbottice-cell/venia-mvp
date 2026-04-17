@@ -17,7 +17,16 @@ type Idea = {
   downvotes: number
   created_at: string
   user_id: string
+  isExample?: boolean
 }
+
+const EXAMPLE_IDEAS: Idea[] = [
+  { id: 'example-1', name: 'EchoAI', pitch: 'AI that joins your calls, takes perfect notes, assigns action items, and sends follow-ups automatically — built for remote teams who waste hours recapping meetings.', problem: 'Remote teams spend more time recapping meetings than acting on them.', path: 'build', framework: 'frustration', upvotes: 214, downvotes: 12, created_at: '2026-01-10T00:00:00Z', user_id: 'example', isExample: true },
+  { id: 'example-2', name: 'SipStill', pitch: 'A smart coffee system that adapts your brew strength to your sleep quality and stress levels, pulled automatically from Apple Health each morning.', problem: 'People drink caffeine on autopilot, ignoring what their body actually needs that day.', path: 'build', framework: 'trend', upvotes: 187, downvotes: 8, created_at: '2026-01-18T00:00:00Z', user_id: 'example', isExample: true },
+  { id: 'example-3', name: 'Favilla', pitch: 'A dating app built around real-world check-ins — match with people at the same bar, coffee shop, or event right now, not people who were nearby three days ago.', problem: 'Dating apps feel artificial because they disconnect attraction from the moment it actually happens.', path: 'build', framework: 'frustration', upvotes: 143, downvotes: 31, created_at: '2026-02-02T00:00:00Z', user_id: 'example', isExample: true },
+  { id: 'example-4', name: 'GrowLocal', pitch: 'A hyper-local marketplace connecting home gardeners with neighbors who want fresh produce — sell your surplus harvest to people within a 5-mile radius.', problem: 'Home gardeners grow more than they can eat and have no easy way to sell locally without a farmers market.', path: 'license', framework: 'community', upvotes: 98, downvotes: 5, created_at: '2026-02-14T00:00:00Z', user_id: 'example', isExample: true },
+  { id: 'example-5', name: 'SkillBridge', pitch: 'A peer-to-peer skill exchange where expertise is the currency — teach what you know, learn what you need, no money changes hands.', problem: 'People have valuable skills they never monetize, and expensive skills they can never afford to learn.', path: 'license', framework: 'skill', upvotes: 76, downvotes: 3, created_at: '2026-03-01T00:00:00Z', user_id: 'example', isExample: true },
+]
 
 export default function BrowsePage() {
   const router = useRouter()
@@ -43,7 +52,8 @@ export default function BrowsePage() {
         .select('id, name, pitch, problem, path, framework, upvotes, downvotes, created_at, user_id')
         .order('upvotes', { ascending: false })
 
-      setIdeas(data || [])
+      const real = (data || []) as Idea[]
+      setIdeas([...real, ...EXAMPLE_IDEAS])
       setLoading(false)
     }
     load()
@@ -128,6 +138,7 @@ export default function BrowsePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {filtered.map(idea => {
             const isOwn = idea.user_id === currentUserId
+            const isExample = idea.isExample
             const userVote = voted[idea.id]
             const isVoting = voting === idea.id
             const score = (idea.upvotes || 0) - (idea.downvotes || 0)
@@ -139,18 +150,16 @@ export default function BrowsePage() {
                   {/* Vote column */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                     <button
-                      onClick={() => !isOwn && vote(idea.id, 'up')}
-                      disabled={isOwn || isVoting}
-                      title={isOwn ? 'Cannot vote on your own idea' : ''}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#4A4838', cursor: isOwn ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn ? 0.3 : 1 }}>
+                      onClick={() => !isOwn && !isExample && vote(idea.id, 'up')}
+                      disabled={isOwn || isExample || isVoting}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#4A4838', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
                       ▲
                     </button>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: score > 0 ? '#4ADE80' : score < 0 ? '#E07B8A' : '#4A4838', minWidth: '20px', textAlign: 'center' }}>{score}</div>
                     <button
-                      onClick={() => !isOwn && vote(idea.id, 'down')}
-                      disabled={isOwn || isVoting}
-                      title={isOwn ? 'Cannot vote on your own idea' : ''}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#4A4838', cursor: isOwn ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn ? 0.3 : 1 }}>
+                      onClick={() => !isOwn && !isExample && vote(idea.id, 'down')}
+                      disabled={isOwn || isExample || isVoting}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#4A4838', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
                       ▼
                     </button>
                   </div>
@@ -169,8 +178,10 @@ export default function BrowsePage() {
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: 'rgba(201,168,76,0.4)', letterSpacing: '0.06em' }}>{new Date(idea.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                       {isOwn ? (
                         <button onClick={() => router.push(`/ideas/${idea.id}`)} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit →</button>
-                      ) : (
+                      ) : !isExample ? (
                         <button onClick={() => { setInvestModal(idea); setInvestAmount(''); setInvestDone(false) }} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '5px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>💰 Invest</button>
+                      ) : (
+                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.35)', padding: '4px 0' }}>Example idea</div>
                       )}
                     </div>
                   </div>
