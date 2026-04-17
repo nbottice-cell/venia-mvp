@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const doors = [
-  { id: 'learn', icon: '✦', title: 'Learn About Venia', subtitle: 'New here?', desc: 'Discover what Venia is, how it works, and the different ways you can use it to go from idea to income.', color: '#C9A84C', colorDim: 'rgba(201,168,76,0.10)', colorBorder: 'rgba(201,168,76,0.30)', tag: 'Start Here', path: '/learn' },
+  { id: 'launch', icon: '◈', title: 'Launch an Idea', subtitle: 'Ready to build?', desc: 'Have an idea already, or want to find one? AI walks you through every step from raw concept to a live listing.', color: '#C9A84C', colorDim: 'rgba(201,168,76,0.10)', colorBorder: 'rgba(201,168,76,0.30)', tag: 'Create', path: '/launch' },
+  { id: 'browse', icon: '⬡', title: 'Browse Ideas', subtitle: 'Community feed', desc: 'Explore ideas from other founders. Upvote the ones you believe in and see what the community is building.', color: '#E07B8A', colorDim: 'rgba(224,123,138,0.10)', colorBorder: 'rgba(224,123,138,0.30)', tag: 'Explore', path: '/browse' },
   { id: 'ideas', icon: '◎', title: 'My Ideas', subtitle: 'Your work', desc: 'View, edit, and build on the ideas you have already created. All your briefs in one place.', color: '#2DD4BF', colorDim: 'rgba(45,212,191,0.10)', colorBorder: 'rgba(45,212,191,0.30)', tag: 'My Work', path: '/ideas' },
-  { id: 'launch', icon: '◈', title: 'Launch an Idea', subtitle: 'Ready to build?', desc: 'Have an idea already, or want to find one? AI walks you through every step from raw concept to a live listing.', color: '#E2C06A', colorDim: 'rgba(226,192,106,0.10)', colorBorder: 'rgba(226,192,106,0.30)', tag: 'Create', path: '/launch' },
+  { id: 'learn', icon: '✦', title: 'Learn About Venia', subtitle: 'New here?', desc: 'Discover what Venia is, how it works, and the different ways you can use it to go from idea to income.', color: '#8E8B7A', colorDim: 'rgba(142,139,122,0.10)', colorBorder: 'rgba(142,139,122,0.25)', tag: 'Start Here', path: '/learn' },
 ]
 
 export default function WelcomePage() {
