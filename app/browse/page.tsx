@@ -28,6 +28,9 @@ export default function BrowsePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [voted, setVoted] = useState<Record<string, 'up' | 'down'>>({})
   const [voting, setVoting] = useState<string | null>(null)
+  const [investModal, setInvestModal] = useState<Idea | null>(null)
+  const [investAmount, setInvestAmount] = useState('')
+  const [investDone, setInvestDone] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -162,10 +165,12 @@ export default function BrowsePage() {
                       {isOwn && <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.15)', color: 'rgba(201,168,76,0.5)', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '3px 8px', borderRadius: '4px', flexShrink: 0 }}>Yours</div>}
                     </div>
                     <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6', marginBottom: '12px' }}>{idea.pitch}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: 'rgba(201,168,76,0.4)', letterSpacing: '0.06em' }}>{new Date(idea.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                      {isOwn && (
+                      {isOwn ? (
                         <button onClick={() => router.push(`/ideas/${idea.id}`)} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit →</button>
+                      ) : (
+                        <button onClick={() => { setInvestModal(idea); setInvestAmount(''); setInvestDone(false) }} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '5px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>💰 Invest</button>
                       )}
                     </div>
                   </div>
@@ -175,6 +180,56 @@ export default function BrowsePage() {
           })}
         </div>
       </div>
+
+      {/* Invest modal */}
+      {investModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setInvestModal(null)}>
+          <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '20px', padding: '32px', maxWidth: '420px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+            {!investDone ? (
+              <>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '8px' }}>💰 Invest in this idea</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', fontWeight: '600', color: '#EEE8D8', marginBottom: '6px' }}>{investModal.name}</div>
+                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6', marginBottom: '24px' }}>{investModal.pitch}</p>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)' }}>Investment amount</label>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' as const }}>
+                    {['$100', '$500', '$1,000', '$5,000'].map(amt => (
+                      <button key={amt} onClick={() => setInvestAmount(amt)} style={{ padding: '7px 14px', borderRadius: '8px', border: `1px solid ${investAmount === amt ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.08)'}`, background: investAmount === amt ? 'rgba(201,168,76,0.12)' : 'transparent', color: investAmount === amt ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>{amt}</button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Or enter a custom amount…"
+                    value={investAmount}
+                    onChange={e => setInvestAmount(e.target.value)}
+                    style={{ width: '100%', padding: '11px 13px', background: 'rgba(17,25,35,0.8)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", boxSizing: 'border-box' as const }}
+                    onFocus={e => e.target.style.borderColor = 'rgba(201,168,76,0.4)'}
+                    onBlur={e => e.target.style.borderColor = 'rgba(201,168,76,0.15)'}
+                  />
+                </div>
+
+                <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '4px' }}>Coming Soon</div>
+                  <p style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.55' }}>Investment processing is not yet live. Submitting your interest lets the founder know you are serious and reserves your place when it opens.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setInvestModal(null)} style={{ flex: 1, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '12px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
+                  <button onClick={() => setInvestDone(true)} disabled={!investAmount} style={{ flex: 2, background: investAmount ? 'linear-gradient(135deg, #C9A84C, #E2C06A)' : 'rgba(201,168,76,0.2)', color: '#111923', border: 'none', padding: '12px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: investAmount ? 'pointer' : 'not-allowed', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Express Interest →</button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <div style={{ fontSize: '40px', marginBottom: '16px' }}>✦</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: '600', color: '#EEE8D8', marginBottom: '10px' }}>Interest noted.</div>
+                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.65', marginBottom: '24px' }}>The founder of <strong style={{ color: '#C9A84C' }}>{investModal.name}</strong> will be notified when investment opens. We will reach out when it is time.</p>
+                <button onClick={() => setInvestModal(null)} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 28px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Back to Feed</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
