@@ -98,6 +98,19 @@ ONLY the JSON object. No markdown.`
       return NextResponse.json({ success: true, data: parsed })
     }
 
+    if (action === 'generate_connect_message') {
+      const { targetName, targetTagline, targetCategory, ideaName, ideaPitch } = payload
+      const system = `You are Venia — helping a founder write a warm, specific outreach message to a potential collaborator or partner. The message should feel human and direct, not like a template. It should be 3–5 sentences: introduce the founder briefly, reference something specific about the recipient's background, explain what they are working on (if an idea is provided), and make a clear, respectful ask. Do not use hollow phrases like "I came across your profile" or "I hope this message finds you well." Plain text only.`
+      const ideaContext = ideaName ? `The founder is working on: "${ideaName}" — ${ideaPitch}` : 'The founder has not yet specified a particular idea.'
+      const user = `Write a connection request message from a founder to ${targetName} (${targetTagline}), who is listed as a ${targetCategory} on Venia.
+
+${ideaContext}
+
+Write the message in first person from the founder's perspective. 3–5 sentences. Warm, specific, and human. No subject line. Plain text only.`
+      const result = await callClaude(system, user)
+      return NextResponse.json({ success: true, data: { message: result.trim() } })
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 })
 
   } catch (error: unknown) {
