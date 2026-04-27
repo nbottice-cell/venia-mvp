@@ -567,7 +567,7 @@ export default function LaunchPage() {
           <div style={{ marginBottom: '24px' }}>
             <button onClick={() => setStage('brief')} style={{ ...ghostBtn, marginBottom: '16px' }}>← Back to Brief</button>
             <div style={eyebrow}>📊 Market Diagnostic</div>
-            <h1 style={h1}>{diagnosticLoading ? 'Running diagnostic…' : 'The honest market view.'}</h1>
+            <h1 style={{ ...h1, color: '#1A2332' }}>{diagnosticLoading ? 'Running diagnostic…' : 'The honest market view.'}</h1>
             <p style={sub}>{diagnosticLoading ? 'Analyzing market size, competitors, regulatory landscape, and the fastest path to validation.' : 'No flattery. No hype. Just what an experienced investor would tell you in private.'}</p>
           </div>
 
@@ -604,19 +604,19 @@ export default function LaunchPage() {
                 <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{diagnostic.regulatoryNotes}</p>
               </div>
 
-              <div style={{ ...card, borderColor: 'rgba(224,123,138,0.25)', background: 'rgba(224,123,138,0.04)' }}>
+              <div style={{ ...card, borderColor: 'rgba(224,123,138,0.35)', background: '#18222E' }}>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#E07B8A', marginBottom: '14px' }}>Honest Risks</div>
                 {diagnostic.honestRisks.map((risk, i) => (
                   <div key={i} style={{ marginBottom: i < diagnostic.honestRisks.length - 1 ? '12px' : '0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                     <div style={{ color: '#E07B8A', fontSize: '14px', flexShrink: 0 }}>!</div>
-                    <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{risk}</p>
+                    <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7', margin: 0 }}>{risk}</p>
                   </div>
                 ))}
               </div>
 
-              <div style={{ ...card, borderColor: 'rgba(74,222,128,0.25)', background: 'rgba(74,222,128,0.04)' }}>
+              <div style={{ ...card, borderColor: 'rgba(74,222,128,0.35)', background: '#18222E' }}>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#4ADE80', marginBottom: '8px' }}>Fastest Validation</div>
-                <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{diagnostic.fastestValidation}</p>
+                <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7', margin: 0 }}>{diagnostic.fastestValidation}</p>
               </div>
 
               <button onClick={() => setStage('brief')} style={{ ...goldBtn, width: '100%', marginTop: '8px' }}>Back to Brief →</button>
