@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-20250514'
+const MODEL = 'claude-sonnet-4-5'
 
 async function callClaude(systemPrompt: string, userMessage: string, maxTokens: number = 1024): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
