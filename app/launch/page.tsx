@@ -2,13 +2,12 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-type Stage = 'choose' | 'refine' | 'guided' | 'prompts' | 'brief'
+type Stage = 'choose' | 'refine' | 'guided' | 'prompts' | 'brief' | 'diagnostic' | 'revenue' | 'pitch'
 type Framework = 'frustration' | 'skill' | 'community' | 'trend' | 'ambition'
-type SavePath = 'further' | 'build' | 'license' | 'later'
 
 const FRAMEWORKS = [
   { id: 'frustration', icon: '😤', name: 'Frustration', desc: 'Something in your life is broken and you keep hitting the same wall.' },
@@ -56,26 +55,43 @@ const PROMPTS: Record<string, {q: string, tag: string}[]> = {
   ],
 }
 
-async function aiAnalyzeIdea(rawIdea: string) {
+// ── AI HELPERS ──
+async function aiCall(action: string, payload: Record<string, unknown>) {
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'analyze_idea', payload: { rawIdea } }),
+    body: JSON.stringify({ action, payload }),
   })
   const data = await res.json()
-  if (!data.success) throw new Error(data.error)
-  return data.data as { hearing: string, unclear: string[], interesting: string }
+  if (!data.success) throw new Error(data.error || 'AI call failed')
+  return data.data
 }
 
-async function aiGenerateBrief(framework: string, rawIdea: string, answers: {tag: string, answer: string}[]) {
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'generate_brief', payload: { framework, rawIdea, answers } }),
-  })
-  const data = await res.json()
-  if (!data.success) throw new Error(data.error)
-  return data.data as { names: string[], pitch: string, problem: string, solution: string, customer: string, whyNow: string, unfairAdvantage: string }
+type Brief = {
+  names: string[]
+  pitch: string
+  problem: string
+  solution: string
+  customer: string
+  whyNow: string
+  unfairAdvantage: string
+}
+
+type Diagnostic = {
+  marketSize: string
+  competitors: { name: string, approach: string, gap: string }[]
+  regulatoryNotes: string
+  honestRisks: string[]
+  fastestValidation: string
+}
+
+type RevenuePath = {
+  name: string
+  description: string
+  weekOne: string
+  weekTwoToFour: string
+  expectedRevenue: string
+  risk: string
 }
 
 export default function LaunchPage() {
@@ -86,26 +102,49 @@ export default function LaunchPage() {
   const [reflection, setReflection] = useState<{hearing: string, unclear: string[], interesting: string} | null>(null)
   const [reflectionLoading, setReflectionLoading] = useState(false)
   const [reflectionError, setReflectionError] = useState('')
+
   const [promptIndex, setPromptIndex] = useState(0)
   const [answers, setAnswers] = useState<{tag: string, answer: string}[]>([])
   const [currentAnswer, setCurrentAnswer] = useState('')
+  const [chat, setChat] = useState<{role: 'ai' | 'user', text: string}[]>([])
+  const [aiTyping, setAiTyping] = useState(false)
+
+  const [brief, setBrief] = useState<Brief | null>(null)
   const [briefLoading, setBriefLoading] = useState(false)
-  const [brief, setBrief] = useState<{names: string[], pitch: string, problem: string, solution: string, customer: string, whyNow: string, unfairAdvantage: string} | null>(null)
   const [ideaName, setIdeaName] = useState('')
+
+  const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null)
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false)
+  const [revenuePaths, setRevenuePaths] = useState<RevenuePath[] | null>(null)
+  const [revenueLoading, setRevenueLoading] = useState(false)
+  const [selectedRevenuePath, setSelectedRevenuePath] = useState<number | null>(null)
+
+  const [pitchChat, setPitchChat] = useState<{role: 'ai' | 'user', text: string}[]>([])
+  const [pitchInput, setPitchInput] = useState('')
+  const [pitchTurn, setPitchTurn] = useState(0)
+  const [pitchTyping, setPitchTyping] = useState(false)
+  const [pitchVerdict, setPitchVerdict] = useState<string | null>(null)
+
   const [saving, setSaving] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const pitchEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat, aiTyping])
+  useEffect(() => { pitchEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [pitchChat, pitchTyping])
 
   const prompts = framework ? PROMPTS[framework] : []
-  const isLastQuestion = promptIndex + 1 >= prompts.length
 
+  // ── REFINE PATH ──
   async function analyzeIdea() {
     if (rawIdea.trim().length < 10) return
     setReflectionLoading(true)
     setReflectionError('')
     try {
-      const result = await aiAnalyzeIdea(rawIdea)
-      setReflection(result)
-    } catch {
-      setReflectionError('Something went wrong analyzing your idea. Please try again.')
+      const result = await aiCall('analyze_idea', { rawIdea })
+      setReflection(result as typeof reflection)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      setReflectionError('Could not analyze: ' + msg)
     } finally {
       setReflectionLoading(false)
     }
@@ -115,71 +154,167 @@ export default function LaunchPage() {
     const f = fw || framework
     if (!f) return
     setFramework(f)
+    setChat([{ role: 'ai', text: PROMPTS[f][0].q }])
     setPromptIndex(0)
     setAnswers([])
-    setCurrentAnswer('')
     setStage('prompts')
   }
 
+  // ── PROMPTS ──
   async function sendAnswer() {
-    if (!currentAnswer.trim() || !framework) return
+    if (!currentAnswer.trim() || aiTyping || !framework) return
     const answer = currentAnswer.trim()
     setCurrentAnswer('')
 
+    const newChat = [...chat, { role: 'user' as const, text: answer }]
+    setChat(newChat)
     const newAnswers = [...answers, { tag: prompts[promptIndex].tag, answer }]
     setAnswers(newAnswers)
+    setAiTyping(true)
 
-    if (isLastQuestion) {
-      setStage('brief')
-      setBriefLoading(true)
-      try {
-        const briefData = await aiGenerateBrief(framework, rawIdea, newAnswers)
-        setBrief(briefData)
-      } catch {
-        setBrief({
-          names: ['YourIdea', 'IdeaFlow', 'LaunchIt'],
-          pitch: 'A solution built around the problem you described.',
-          problem: 'The problem you described affects many people who currently have no good option.',
-          solution: 'Your solution addresses this directly using your unique insight.',
-          customer: 'The specific person you described throughout this session.',
-          whyNow: 'The conditions to build this successfully exist today.',
-          unfairAdvantage: 'Your lived experience gives you insight no outsider could replicate.',
-        })
-      } finally {
-        setBriefLoading(false)
+    const isLast = promptIndex + 1 >= prompts.length
+
+    try {
+      const data = await aiCall('respond_to_answer', {
+        framework,
+        promptTag: prompts[promptIndex].tag,
+        question: prompts[promptIndex].q,
+        answer,
+        conversationHistory: newChat,
+        isLastQuestion: isLast,
+      })
+      const reply = (data as {reply: string}).reply
+
+      setAiTyping(false)
+
+      if (isLast) {
+        setChat(prev => [...prev, { role: 'ai', text: reply }])
+        setBriefLoading(true)
+        setStage('brief')
+        try {
+          const briefData = await aiCall('generate_brief', { framework, rawIdea, answers: newAnswers })
+          setBrief(briefData as Brief)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Error'
+          alert('Could not generate brief: ' + msg)
+        } finally {
+          setBriefLoading(false)
+        }
+      } else {
+        const nextIndex = promptIndex + 1
+        setChat(prev => [...prev,
+          { role: 'ai', text: reply },
+          { role: 'ai', text: prompts[nextIndex].q }
+        ])
+        setPromptIndex(nextIndex)
       }
-    } else {
-      setPromptIndex(promptIndex + 1)
+    } catch {
+      setAiTyping(false)
+      setChat(prev => [...prev, { role: 'ai', text: "I had trouble processing that. Can you rephrase?" }])
     }
   }
 
-  async function saveIdea(path: SavePath) {
+  // ── DIAGNOSTIC ──
+  async function runDiagnostic() {
+    if (!brief || diagnostic) { setStage('diagnostic'); return }
+    setStage('diagnostic')
+    setDiagnosticLoading(true)
+    try {
+      const data = await aiCall('market_diagnostic', { brief })
+      setDiagnostic(data as Diagnostic)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert('Diagnostic failed: ' + msg)
+    } finally {
+      setDiagnosticLoading(false)
+    }
+  }
+
+  // ── REVENUE ──
+  async function runRevenue() {
+    if (!brief || revenuePaths) { setStage('revenue'); return }
+    setStage('revenue')
+    setRevenueLoading(true)
+    try {
+      const data = await aiCall('revenue_paths', { brief })
+      setRevenuePaths((data as {paths: RevenuePath[]}).paths)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert('Revenue paths failed: ' + msg)
+    } finally {
+      setRevenueLoading(false)
+    }
+  }
+
+  // ── PITCH SIMULATOR ──
+  async function startPitch() {
+    if (!brief) return
+    setStage('pitch')
+    setPitchChat([])
+    setPitchTurn(0)
+    setPitchVerdict(null)
+    setPitchTyping(true)
+    try {
+      const data = await aiCall('pitch_simulator', {
+        brief, founderResponse: '', conversationHistory: [], turnNumber: 1
+      })
+      const reply = (data as {reply: string}).reply
+      setPitchChat([{ role: 'ai', text: reply }])
+      setPitchTurn(1)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert('Pitch simulator failed: ' + msg)
+    } finally {
+      setPitchTyping(false)
+    }
+  }
+
+  async function sendPitchResponse() {
+    if (!pitchInput.trim() || pitchTyping || !brief) return
+    const response = pitchInput.trim()
+    setPitchInput('')
+    const newChat = [...pitchChat, { role: 'user' as const, text: response }]
+    setPitchChat(newChat)
+    setPitchTyping(true)
+    try {
+      const data = await aiCall('pitch_simulator', {
+        brief, founderResponse: response, conversationHistory: newChat, turnNumber: pitchTurn + 1
+      })
+      const reply = (data as {reply: string}).reply
+      setPitchChat(prev => [...prev, { role: 'ai', text: reply }])
+      if (reply.toLowerCase().includes('verdict:')) setPitchVerdict(reply)
+      setPitchTurn(t => t + 1)
+    } catch {
+      setPitchChat(prev => [...prev, { role: 'ai', text: "Let me think differently — could you rephrase that?" }])
+    } finally {
+      setPitchTyping(false)
+    }
+  }
+
+  // ── SAVE ──
+  async function saveIdea(path: 'build' | 'license') {
     setSaving(true)
     try {
       const { data: userData } = await supabase.auth.getUser()
       if (!userData.user) { router.push('/auth'); return }
       if (!brief) return
-      const { data: inserted, error } = await supabase.from('ideas').insert({
+      const { error } = await supabase.from('ideas').insert({
         user_id: userData.user.id,
         name: ideaName || brief.names[0],
         pitch: brief.pitch,
         problem: brief.problem,
         solution: brief.solution,
         why_now: brief.whyNow,
-        path: path === 'further' || path === 'later' ? 'build' : path,
+        path,
         framework: framework || 'guided',
         raw_idea: rawIdea || null,
         answers,
         status: 'draft',
-      }).select('id').single()
-      if (error) throw new Error((error as {message?: string}).message || JSON.stringify(error))
-      if (path === 'later') {
-        router.push('/ideas')
-      } else {
-        router.push(`/ideas/${inserted.id}`)
-      }
+      })
+      if (error) throw error
+      router.push('/browse')
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : (err as {message?: string})?.message || 'Save failed'
+      const message = err instanceof Error ? err.message : 'Unknown error'
       alert('Error saving: ' + message)
     } finally {
       setSaving(false)
@@ -187,24 +322,32 @@ export default function LaunchPage() {
   }
 
   // ── STYLES ──
-  const navStyle: React.CSSProperties = { height: '52px', background: 'rgba(245,242,236,0.97)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(201,168,76,0.18)', boxShadow: '0 1px 8px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '14px', position: 'sticky', top: 0, zIndex: 50 }
-  const wrap = { maxWidth: '700px', margin: '0 auto', padding: '40px 20px' }
+  const navStyle = { height: '52px', background: 'rgba(245,242,236,0.97)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(201,168,76,0.18)', boxShadow: '0 1px 8px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '14px', position: 'sticky' as const, top: 0, zIndex: 50 }
+  const wrap = { maxWidth: '720px', margin: '0 auto', padding: '36px 20px' }
   const card = { background: '#18222E', border: '1px solid rgba(201,168,76,0.14)', borderRadius: '16px', padding: '28px', boxShadow: '0 4px 20px rgba(0,0,0,0.18)', marginBottom: '16px' }
-  const eyebrow: React.CSSProperties = { fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '8px' }
-  const h1: React.CSSProperties = { fontFamily: "'Playfair Display', serif", fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: '600', color: '#EEE8D8', letterSpacing: '-0.02em', lineHeight: '1.2', marginBottom: '10px' }
-  const sub: React.CSSProperties = { color: '#8E8B7A', fontSize: '13px', lineHeight: '1.65', marginBottom: '24px' }
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '12px 14px', background: 'rgba(17,25,35,0.8)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif" }
-  const label: React.CSSProperties = { display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(201,168,76,0.7)' }
-  const goldBtn: React.CSSProperties = { background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 24px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: '0 4px 14px rgba(201,168,76,0.25)' }
-  const ghostBtn: React.CSSProperties = { background: 'none', border: '1px solid rgba(201,168,76,0.2)', color: '#8E8B7A', padding: '11px 22px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }
+  const eyebrow = { fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.22em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '8px' }
+  const h1 = { fontFamily: "'Playfair Display', serif", fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: '600', color: '#EEE8D8', letterSpacing: '-0.02em', lineHeight: '1.2', marginBottom: '10px' }
+  const sub = { color: '#8E8B7A', fontSize: '13px', lineHeight: '1.65', marginBottom: '24px' }
+  const inputStyle = { width: '100%', padding: '12px 14px', background: 'rgba(17,25,35,0.8)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif" }
+  const label = { display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)' }
+  const goldBtn = { background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 24px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: '0 4px 14px rgba(201,168,76,0.25)' }
+  const tealBtn = { background: 'linear-gradient(135deg, #2DD4BF, #1EBFAA)', color: '#111923', border: 'none', padding: '12px 24px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }
+  const ghostBtn = { background: 'none', border: '1px solid rgba(201,168,76,0.2)', color: '#8E8B7A', padding: '11px 22px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }
+
+  const stageLabel: Record<Stage, string> = {
+    choose: 'Start', refine: 'Refine', guided: 'Path', prompts: 'Discover',
+    brief: 'Brief', diagnostic: 'Market', revenue: 'Revenue', pitch: 'Pitch',
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#F5F2EC', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       <nav style={navStyle}>
         <button onClick={() => stage === 'choose' ? router.push('/welcome') : setStage('choose')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4A5A6C', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>← Back</button>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', fontWeight: '600', color: '#1A2332', flex: 1 }}>Launch an Idea</div>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', fontWeight: '600', color: '#1A2332', flex: 1 }}>
+          Launch · {stageLabel[stage]}
+        </div>
         <div style={{ display: 'flex', gap: '5px' }}>
-          {(['choose','refine','guided','prompts','brief'] as Stage[]).map(s => (
+          {(['choose','prompts','brief','diagnostic','revenue','pitch'] as Stage[]).map(s => (
             <div key={s} style={{ width: stage === s ? '18px' : '6px', height: '6px', borderRadius: '3px', background: stage === s ? '#C9A84C' : 'rgba(201,168,76,0.2)', transition: 'all 0.3s' }} />
           ))}
         </div>
@@ -216,11 +359,11 @@ export default function LaunchPage() {
           <div style={card}>
             <div style={eyebrow}>✦ Create Mode</div>
             <h1 style={h1}>Where does your <em style={{ fontStyle: 'italic', color: '#C9A84C' }}>idea live right now?</em></h1>
-            <p style={sub}>Choose the path that fits where you are today. Both lead to the same place — a real idea ready to launch.</p>
+            <p style={sub}>Both paths lead to a structured Idea Brief, market analysis, revenue paths, and a pitch simulator with real AI feedback.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {[
-                { id: 'refine', icon: '💡', title: 'I Have an Idea', desc: 'You know what you want to build. Let AI help you sharpen it until it is launch-ready.', color: '#C9A84C', tag: 'Refine' },
-                { id: 'guided', icon: '🌱', title: 'I Have a Feeling', desc: 'You know what frustrates you or excites you. Guided questions will uncover what is hiding there.', color: '#2DD4BF', tag: 'Guided' },
+                { id: 'refine', icon: '💡', title: 'I Have an Idea', desc: 'You know what you want to build. Let AI help you sharpen it.', tag: 'Refine' },
+                { id: 'guided', icon: '🌱', title: 'I Have a Feeling', desc: 'You know what frustrates or excites you. Guided questions will uncover what is hiding there.', tag: 'Guided' },
               ].map(door => (
                 <button key={door.id} onClick={() => setStage(door.id as Stage)}
                   style={{ background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '18px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '14px' }}
@@ -231,7 +374,7 @@ export default function LaunchPage() {
                     <div style={{ fontSize: '15px', fontWeight: '600', color: '#EEE8D8', marginBottom: '4px' }}>{door.title}</div>
                     <div style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.5' }}>{door.desc}</div>
                   </div>
-                  <div style={{ background: door.color === '#C9A84C' ? 'rgba(201,168,76,0.12)' : 'rgba(45,212,191,0.12)', border: `1px solid ${door.color === '#C9A84C' ? 'rgba(201,168,76,0.25)' : 'rgba(45,212,191,0.25)'}`, color: door.color, fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: '4px', flexShrink: 0 }}>{door.tag}</div>
+                  <div style={{ background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.25)', color: '#C9A84C', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: '4px', flexShrink: 0 }}>{door.tag}</div>
                 </button>
               ))}
             </div>
@@ -248,10 +391,10 @@ export default function LaunchPage() {
             <p style={sub}>Write like you are explaining it to a friend at dinner. The messier the better.</p>
             <div style={{ marginBottom: '16px' }}>
               <label style={label}>Your idea</label>
-              <textarea value={rawIdea} onChange={(e) => setRawIdea(e.target.value)} placeholder="I have been thinking about building something that helps people who… The problem I keep seeing is…" style={{ ...inputStyle, minHeight: '140px', resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
+              <textarea value={rawIdea} onChange={(e) => setRawIdea(e.target.value)} placeholder="I have been thinking about building something that helps people who…" style={{ ...inputStyle, minHeight: '140px', resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties} />
             </div>
             <button onClick={analyzeIdea} disabled={rawIdea.length < 10 || reflectionLoading} style={{ ...goldBtn, width: '100%', opacity: rawIdea.length < 10 ? 0.5 : 1 }}>
-              {reflectionLoading ? '✦ Analyzing your idea…' : 'Analyze My Idea →'}
+              {reflectionLoading ? '✦ Analyzing…' : 'Analyze My Idea →'}
             </button>
             {reflectionError && <div style={{ marginTop: '10px', color: '#E07B8A', fontSize: '12px', textAlign: 'center' }}>{reflectionError}</div>}
           </div>
@@ -260,13 +403,13 @@ export default function LaunchPage() {
             <div style={card}>
               <div style={eyebrow}>✨ AI Reflection</div>
               {[
-                { label: "What I am hearing", text: reflection.hearing, borderColor: 'rgba(201,168,76,0.18)', labelColor: '#C9A84C' },
-                { label: "What we will explore together", text: `• ${reflection.unclear[0]}\n• ${reflection.unclear[1]}`, borderColor: 'rgba(224,123,138,0.18)', labelColor: '#E07B8A' },
-                { label: "What I find exciting", text: reflection.interesting, borderColor: 'rgba(74,222,128,0.18)', labelColor: '#4ADE80' },
+                { label: "What I am hearing", text: reflection.hearing, color: '#C9A84C' },
+                { label: "What is not clear yet", text: `• ${reflection.unclear[0]}\n• ${reflection.unclear[1]}`, color: '#E07B8A' },
+                { label: "What I find interesting", text: reflection.interesting, color: '#4ADE80' },
               ].map((block, i) => (
-                <div key={i} style={{ background: 'rgba(17,25,35,0.6)', border: `1px solid ${block.borderColor}`, borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
-                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: block.labelColor, marginBottom: '7px' }}>{block.label}</div>
-                  <p style={{ color: '#8E8B7A', fontSize: '13px', lineHeight: '1.65', whiteSpace: 'pre-line' }}>{block.text}</p>
+                <div key={i} style={{ background: 'rgba(17,25,35,0.6)', border: `1px solid ${block.color}30`, borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: block.color, marginBottom: '7px' }}>{block.label}</div>
+                  <p style={{ color: '#C8C4B4', fontSize: '13px', lineHeight: '1.65', whiteSpace: 'pre-line' }}>{block.text}</p>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
@@ -288,7 +431,7 @@ export default function LaunchPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
               {FRAMEWORKS.map(fw => (
                 <button key={fw.id} onClick={() => setFramework(fw.id as Framework)}
-                  style={{ background: framework === fw.id ? 'rgba(201,168,76,0.10)' : 'rgba(17,25,35,0.6)', border: `1px solid ${framework === fw.id ? 'rgba(201,168,76,0.30)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.15s' }}>
+                  style={{ background: framework === fw.id ? 'rgba(201,168,76,0.10)' : 'rgba(17,25,35,0.6)', border: `1px solid ${framework === fw.id ? 'rgba(201,168,76,0.30)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ fontSize: '22px', flexShrink: 0 }}>{fw.icon}</span>
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: '600', color: framework === fw.id ? '#EEE8D8' : '#8E8B7A', marginBottom: '3px' }}>{fw.name}</div>
@@ -306,63 +449,61 @@ export default function LaunchPage() {
       {/* ── PROMPTS ── */}
       {stage === 'prompts' && (
         <div style={wrap}>
-          {/* Progress */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '600', color: '#111923', flexShrink: 0 }}>{promptIndex + 1}</div>
+          <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '500', color: '#111923', flexShrink: 0 }}>{promptIndex + 1}</div>
             <div>
               <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#8E8B7A', letterSpacing: '0.08em' }}>Question {promptIndex + 1} of {prompts.length}</div>
               <div style={{ fontSize: '12px', color: '#4A4838' }}>{FRAMEWORKS.find(f => f.id === framework)?.name} Path</div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
               {prompts.map((_, i) => (
-                <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', background: i < promptIndex ? '#4ADE80' : i === promptIndex ? '#C9A84C' : 'rgba(255,255,255,0.1)', transition: 'background 0.3s' }} />
+                <div key={i} style={{ width: '7px', height: '7px', borderRadius: '50%', background: i < promptIndex ? '#4ADE80' : i === promptIndex ? '#C9A84C' : 'rgba(255,255,255,0.1)' }} />
               ))}
             </div>
           </div>
 
-          {/* Question */}
           <div style={card}>
-            <div style={eyebrow}>{prompts[promptIndex]?.tag}</div>
-            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(18px, 2.8vw, 24px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em' }}>
-              {prompts[promptIndex]?.q}
-            </p>
+            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(17px, 2.5vw, 21px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em' }}>{prompts[promptIndex]?.q}</p>
           </div>
 
-          {/* Answer */}
-          <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.14)', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.18)' }}>
-            <label style={label}>Your answer</label>
-            <textarea
-              value={currentAnswer}
-              onChange={(e) => setCurrentAnswer(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }}
-              placeholder="Write whatever comes to mind — there are no wrong answers here."
-              rows={4}
-              style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties}
-              onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'}
-              onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'}
-              autoFocus
-            />
-            <button
-              onClick={sendAnswer}
-              disabled={!currentAnswer.trim()}
-              style={{ ...goldBtn, width: '100%', marginTop: '12px', opacity: currentAnswer.trim() ? 1 : 0.4 }}
-            >
-              {isLastQuestion ? 'Build My Brief →' : 'Next Question →'}
-            </button>
+          {chat.length > 1 && (
+            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
+              {chat.slice(1).map((msg, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, background: msg.role === 'ai' ? 'linear-gradient(135deg, #C9A84C, #2DD4BF)' : 'linear-gradient(135deg, #C9A84C, #E07B8A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923' }}>{msg.role === 'ai' ? 'V' : 'Me'}</div>
+                  <div style={{ maxWidth: '82%', padding: '10px 13px', fontSize: '13px', lineHeight: '1.65', background: msg.role === 'ai' ? '#18222E' : 'rgba(201,168,76,0.18)', border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(201,168,76,0.3)', color: msg.role === 'ai' ? '#C8C4B4' : '#1A2332', borderRadius: msg.role === 'ai' ? '4px 10px 10px 10px' : '10px 4px 10px 10px', fontWeight: msg.role === 'user' ? '500' : '400' }}>{msg.text}</div>
+                </div>
+              ))}
+              {aiTyping && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #2DD4BF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923', flexShrink: 0 }}>V</div>
+                  <div style={{ padding: '14px 16px', borderRadius: '4px 10px 10px 10px', background: '#18222E', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '5px' }}>
+                    {[0,1,2].map(i => <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#C9A84C', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <textarea value={currentAnswer} onChange={(e) => setCurrentAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }} placeholder="Type your answer… (Enter to send)" disabled={aiTyping} rows={2} style={{ flex: 1, padding: '11px 13px', background: '#18222E', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", resize: 'none', opacity: aiTyping ? 0.6 : 1 } as React.CSSProperties} />
+            <button onClick={sendAnswer} disabled={!currentAnswer.trim() || aiTyping} style={{ width: '44px', height: '44px', borderRadius: '10px', background: !currentAnswer.trim() || aiTyping ? 'rgba(201,168,76,0.3)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', border: 'none', cursor: !currentAnswer.trim() || aiTyping ? 'not-allowed' : 'pointer', color: '#111923', fontSize: '18px', flexShrink: 0, alignSelf: 'flex-end' }}>→</button>
           </div>
+          <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
         </div>
       )}
 
       {/* ── BRIEF ── */}
       {stage === 'brief' && (
         <div style={wrap}>
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={eyebrow}>✦ Your Idea Brief</div>
             <h1 style={{ ...h1, textAlign: 'center' }}>
               {briefLoading ? 'Building your brief…' : <>Your idea is <em style={{ fontStyle: 'italic', color: '#C9A84C' }}>real</em> now.</>}
             </h1>
             <p style={{ ...sub, textAlign: 'center' }}>
-              {briefLoading ? 'Venia AI is synthesizing everything you shared.' : 'Choose what happens next.'}
+              {briefLoading ? 'Synthesizing your conversation into a structured brief.' : 'Now use the AI to test it from every angle before you launch.'}
             </p>
           </div>
 
@@ -378,20 +519,19 @@ export default function LaunchPage() {
 
           {brief && !briefLoading && (
             <>
-              {/* Name picker */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={label}>Choose a name</label>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   {brief.names.map(name => (
-                    <button key={name} onClick={() => setIdeaName(name)} style={{ padding: '8px 16px', borderRadius: '8px', background: ideaName === name ? 'rgba(201,168,76,0.12)' : '#18222E', border: `1px solid ${ideaName === name ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`, color: ideaName === name ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>{name}</button>
+                    <button key={name} onClick={() => setIdeaName(name)} style={{ padding: '8px 16px', borderRadius: '8px', background: ideaName === name ? 'rgba(201,168,76,0.12)' : '#18222E', border: `1px solid ${ideaName === name ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.07)'}`, color: ideaName === name ? '#C9A84C' : '#8E8B7A', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{name}</button>
                   ))}
                 </div>
-                <input type="text" value={ideaName} onChange={(e) => setIdeaName(e.target.value)} placeholder="Or type your own name…" style={inputStyle} onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
+                <input type="text" value={ideaName} onChange={(e) => setIdeaName(e.target.value)} placeholder="Or type your own…" style={inputStyle} />
               </div>
 
-              {/* Brief content */}
-              <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.16)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', marginBottom: '16px' }}>
+              <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.16)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', marginBottom: '20px' }}>
                 <div style={{ padding: '24px', background: 'linear-gradient(135deg, rgba(201,168,76,0.08), rgba(45,212,191,0.04))', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'inline-flex', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '6px', padding: '3px 10px', marginBottom: '10px', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#C9A84C' }}>✨ AI Brief</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '24px', fontWeight: '600', color: '#EEE8D8', marginBottom: '8px' }}>{ideaName || brief.names[0]}</div>
                   <p style={{ fontSize: '14px', color: '#C8C4B4', lineHeight: '1.6', fontStyle: 'italic' }}>{brief.pitch}</p>
                 </div>
@@ -411,47 +551,210 @@ export default function LaunchPage() {
                 </div>
               </div>
 
-              {/* 4 action buttons */}
-              <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.14)', borderRadius: '16px', padding: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.18)' }}>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '16px' }}>What would you like to do?</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <button onClick={() => saveIdea('further')} disabled={saving}
-                    style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '14px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: saving ? 0.7 : 1 }}>
-                    <div>
-                      <div>Build Further</div>
-                      <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.7, marginTop: '2px' }}>Open your brief and keep developing it</div>
-                    </div>
-                    <span>→</span>
-                  </button>
-                  <button onClick={() => saveIdea('build')} disabled={saving}
-                    style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.25)', color: '#C9A84C', padding: '14px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: saving ? 0.7 : 1 }}>
-                    <div>
-                      <div>⚡ Build It</div>
-                      <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.7, marginTop: '2px' }}>Start building this idea yourself</div>
-                    </div>
-                    <span>→</span>
-                  </button>
-                  <button onClick={() => saveIdea('license')} disabled={saving}
-                    style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.25)', color: '#2DD4BF', padding: '14px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: saving ? 0.7 : 1 }}>
-                    <div>
-                      <div>🏛️ License It</div>
-                      <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.7, marginTop: '2px' }}>Sell or license this idea to someone else</div>
-                    </div>
-                    <span>→</span>
-                  </button>
-                  <button onClick={() => saveIdea('later')} disabled={saving}
-                    style={{ background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#4A4838', padding: '14px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '500', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: saving ? 0.7 : 1 }}>
-                    <div>
-                      <div>Save for Later</div>
-                      <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.7, marginTop: '2px' }}>Keep it in My Ideas and decide another time</div>
-                    </div>
-                    <span>→</span>
-                  </button>
+              {/* AI ANALYSIS BUTTONS */}
+              <div style={{ background: '#18222E', border: '1px solid rgba(45,212,191,0.20)', borderRadius: '16px', padding: '24px', marginBottom: '20px' }}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#2DD4BF', marginBottom: '8px' }}>✦ Test Your Idea</div>
+                <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', fontWeight: '600', color: '#EEE8D8', marginBottom: '6px' }}>Pressure-test before you launch.</h3>
+                <p style={{ fontSize: '12px', color: '#8E8B7A', marginBottom: '16px', lineHeight: '1.65' }}>Use Venia AI to stress-test your idea from three angles. Each one takes about 30 seconds.</p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {[
+                    { id: 'diagnostic', icon: '📊', title: 'Market Diagnostic', desc: 'Market size, competitors, regulatory notes, honest risks, and the fastest validation path.', action: runDiagnostic, done: !!diagnostic },
+                    { id: 'revenue', icon: '💰', title: 'Revenue Path Generator', desc: '3 concrete 30-day paths to your first dollars — what to do this week and the next three.', action: runRevenue, done: !!revenuePaths },
+                    { id: 'pitch', icon: '🎯', title: 'Pitch Simulator', desc: 'AI plays a skeptical investor. Practice answering the questions a real one would ask.', action: startPitch, done: pitchVerdict !== null },
+                  ].map(tool => (
+                    <button key={tool.id} onClick={tool.action}
+                      style={{ background: tool.done ? 'rgba(74,222,128,0.08)' : 'rgba(17,25,35,0.6)', border: `1px solid ${tool.done ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.15s' }}>
+                      <span style={{ fontSize: '22px', flexShrink: 0 }}>{tool.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#EEE8D8', marginBottom: '3px' }}>{tool.title} {tool.done && <span style={{ color: '#4ADE80', fontSize: '11px', marginLeft: '6px' }}>✓ done</span>}</div>
+                        <div style={{ fontSize: '11px', color: '#8E8B7A', lineHeight: '1.5' }}>{tool.desc}</div>
+                      </div>
+                      <span style={{ color: '#C9A84C', fontSize: '14px' }}>→</span>
+                    </button>
+                  ))}
                 </div>
-                {saving && <div style={{ textAlign: 'center', marginTop: '14px', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', letterSpacing: '0.1em' }}>Saving…</div>}
+              </div>
+
+              {/* SAVE BUTTONS */}
+              <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.16)', borderRadius: '16px', overflow: 'hidden' }}>
+                <div style={{ padding: '18px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button onClick={() => saveIdea('build')} disabled={saving} style={{ ...goldBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '⚡ Build Mode'}</button>
+                  <button onClick={() => saveIdea('license')} disabled={saving} style={{ ...tealBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '🏛️ License Mode'}</button>
+                </div>
+                <div style={{ padding: '0 24px 14px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.08em', color: 'rgba(201,168,76,0.3)' }}>Saved as draft — you choose when to publish</div>
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── DIAGNOSTIC ── */}
+      {stage === 'diagnostic' && (
+        <div style={wrap}>
+          <div style={{ marginBottom: '24px' }}>
+            <button onClick={() => setStage('brief')} style={{ ...ghostBtn, marginBottom: '16px' }}>← Back to Brief</button>
+            <div style={eyebrow}>📊 Market Diagnostic</div>
+            <h1 style={h1}>{diagnosticLoading ? 'Running diagnostic…' : 'The honest market view.'}</h1>
+            <p style={sub}>{diagnosticLoading ? 'Analyzing market size, competitors, regulatory landscape, and the fastest path to validation.' : 'No flattery. No hype. Just what an experienced investor would tell you in private.'}</p>
+          </div>
+
+          {diagnosticLoading && (
+            <div style={{ ...card, textAlign: 'center', padding: '48px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '12px' }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#2DD4BF', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+              </div>
+              <div style={{ color: '#8E8B7A', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>This takes about 30 seconds…</div>
+              <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }`}</style>
+            </div>
+          )}
+
+          {diagnostic && !diagnosticLoading && (
+            <>
+              <div style={card}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '8px' }}>Market Size</div>
+                <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{diagnostic.marketSize}</p>
+              </div>
+
+              <div style={card}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '14px' }}>Competitor Landscape</div>
+                {diagnostic.competitors.map((comp, i) => (
+                  <div key={i} style={{ marginBottom: i < diagnostic.competitors.length - 1 ? '14px' : '0', paddingBottom: i < diagnostic.competitors.length - 1 ? '14px' : '0', borderBottom: i < diagnostic.competitors.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#EEE8D8', marginBottom: '5px' }}>{comp.name}</div>
+                    <div style={{ fontSize: '12px', color: '#8E8B7A', marginBottom: '4px', lineHeight: '1.6' }}>{comp.approach}</div>
+                    <div style={{ fontSize: '12px', color: '#4ADE80', lineHeight: '1.6' }}><strong>Their gap:</strong> {comp.gap}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={card}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#E2C06A', marginBottom: '8px' }}>Regulatory Notes</div>
+                <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{diagnostic.regulatoryNotes}</p>
+              </div>
+
+              <div style={{ ...card, borderColor: 'rgba(224,123,138,0.25)', background: 'rgba(224,123,138,0.04)' }}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#E07B8A', marginBottom: '14px' }}>Honest Risks</div>
+                {diagnostic.honestRisks.map((risk, i) => (
+                  <div key={i} style={{ marginBottom: i < diagnostic.honestRisks.length - 1 ? '12px' : '0', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ color: '#E07B8A', fontSize: '14px', flexShrink: 0 }}>!</div>
+                    <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{risk}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...card, borderColor: 'rgba(74,222,128,0.25)', background: 'rgba(74,222,128,0.04)' }}>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#4ADE80', marginBottom: '8px' }}>Fastest Validation</div>
+                <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.7' }}>{diagnostic.fastestValidation}</p>
+              </div>
+
+              <button onClick={() => setStage('brief')} style={{ ...goldBtn, width: '100%', marginTop: '8px' }}>Back to Brief →</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── REVENUE PATHS ── */}
+      {stage === 'revenue' && (
+        <div style={wrap}>
+          <div style={{ marginBottom: '24px' }}>
+            <button onClick={() => setStage('brief')} style={{ ...ghostBtn, marginBottom: '16px' }}>← Back to Brief</button>
+            <div style={eyebrow}>💰 Revenue Path Generator</div>
+            <h1 style={h1}>{revenueLoading ? 'Generating paths…' : 'Three ways to make money in 30 days.'}</h1>
+            <p style={sub}>{revenueLoading ? 'Building three concrete paths from idea to first dollars.' : 'Pick the one that fits how you actually work. Wealth comes from execution — not concepts.'}</p>
+          </div>
+
+          {revenueLoading && (
+            <div style={{ ...card, textAlign: 'center', padding: '48px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '12px' }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#C9A84C', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+              </div>
+              <div style={{ color: '#8E8B7A', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>Designing your 30-day plans…</div>
+              <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }`}</style>
+            </div>
+          )}
+
+          {revenuePaths && !revenueLoading && (
+            <>
+              {revenuePaths.map((path, i) => (
+                <div key={i} onClick={() => setSelectedRevenuePath(i)}
+                  style={{ ...card, cursor: 'pointer', borderColor: selectedRevenuePath === i ? 'rgba(74,222,128,0.4)' : 'rgba(201,168,76,0.14)', background: selectedRevenuePath === i ? 'rgba(74,222,128,0.04)' : '#18222E', transition: 'all 0.2s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111923', fontWeight: '700', fontSize: '13px', flexShrink: 0 }}>{i + 1}</div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#EEE8D8' }}>{path.name}</div>
+                      <div style={{ fontSize: '11px', fontFamily: "'JetBrains Mono', monospace", color: '#4ADE80', letterSpacing: '0.06em' }}>Expected: {path.expectedRevenue}</div>
+                    </div>
+                    {selectedRevenuePath === i && <div style={{ marginLeft: 'auto', color: '#4ADE80', fontSize: '18px' }}>✓</div>}
+                  </div>
+
+                  <p style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.7', marginBottom: '14px' }}>{path.description}</p>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '5px' }}>Week One</div>
+                    <p style={{ fontSize: '12px', color: '#C8C4B4', lineHeight: '1.65' }}>{path.weekOne}</p>
+                  </div>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#C9A84C', marginBottom: '5px' }}>Weeks 2-4</div>
+                    <p style={{ fontSize: '12px', color: '#C8C4B4', lineHeight: '1.65' }}>{path.weekTwoToFour}</p>
+                  </div>
+
+                  <div style={{ padding: '10px 12px', background: 'rgba(224,123,138,0.06)', border: '1px solid rgba(224,123,138,0.18)', borderRadius: '8px' }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#E07B8A' }}>Risk: </span>
+                    <span style={{ fontSize: '11px', color: '#C8C4B4', lineHeight: '1.6' }}>{path.risk}</span>
+                  </div>
+                </div>
+              ))}
+
+              <button onClick={() => setStage('brief')} style={{ ...goldBtn, width: '100%', marginTop: '8px' }}>Back to Brief →</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── PITCH SIMULATOR ── */}
+      {stage === 'pitch' && (
+        <div style={wrap}>
+          <div style={{ marginBottom: '20px' }}>
+            <button onClick={() => setStage('brief')} style={{ ...ghostBtn, marginBottom: '12px' }}>← Back to Brief</button>
+            <div style={eyebrow}>🎯 Pitch Simulator</div>
+            <h1 style={h1}>The room is yours.</h1>
+            <p style={sub}>You are pitching a sharp, skeptical seed investor. Answer their questions like you mean it. After 4-5 turns you will get a verdict.</p>
+          </div>
+
+          <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '440px', overflowY: 'auto' }}>
+            {pitchChat.map((msg, i) => (
+              <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0, background: msg.role === 'ai' ? 'linear-gradient(135deg, #1A2332, #4A5A6C)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: msg.role === 'ai' ? '#EEE8D8' : '#111923', border: msg.role === 'ai' ? '1px solid rgba(201,168,76,0.3)' : 'none' }}>{msg.role === 'ai' ? 'INV' : 'You'}</div>
+                <div style={{ maxWidth: '85%', padding: '12px 15px', fontSize: '13px', lineHeight: '1.7', background: msg.role === 'ai' ? '#18222E' : 'rgba(201,168,76,0.18)', border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(201,168,76,0.3)', color: msg.role === 'ai' ? '#C8C4B4' : '#1A2332', borderRadius: msg.role === 'ai' ? '4px 12px 12px 12px' : '12px 4px 12px 12px', fontWeight: msg.role === 'user' ? '500' : '400' }}>{msg.text}</div>
+              </div>
+            ))}
+            {pitchTyping && (
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #1A2332, #4A5A6C)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: '#EEE8D8', border: '1px solid rgba(201,168,76,0.3)', flexShrink: 0 }}>INV</div>
+                <div style={{ padding: '14px 16px', borderRadius: '4px 12px 12px 12px', background: '#18222E', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '5px' }}>
+                  {[0,1,2].map(i => <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#8E8B7A', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+                </div>
+              </div>
+            )}
+            <div ref={pitchEndRef} />
+          </div>
+
+          {!pitchVerdict && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <textarea value={pitchInput} onChange={(e) => setPitchInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPitchResponse() } }} placeholder="Answer the investor's question…" disabled={pitchTyping} rows={2} style={{ flex: 1, padding: '11px 13px', background: '#18222E', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", resize: 'none', opacity: pitchTyping ? 0.6 : 1 } as React.CSSProperties} />
+              <button onClick={sendPitchResponse} disabled={!pitchInput.trim() || pitchTyping} style={{ width: '44px', height: '44px', borderRadius: '10px', background: !pitchInput.trim() || pitchTyping ? 'rgba(201,168,76,0.3)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', border: 'none', cursor: !pitchInput.trim() || pitchTyping ? 'not-allowed' : 'pointer', color: '#111923', fontSize: '18px', flexShrink: 0, alignSelf: 'flex-end' }}>→</button>
+            </div>
+          )}
+
+          {pitchVerdict && (
+            <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+              <button onClick={() => { setPitchChat([]); setPitchVerdict(null); startPitch() }} style={{ ...ghostBtn, flex: 1 }}>Pitch again</button>
+              <button onClick={() => setStage('brief')} style={{ ...goldBtn, flex: 2 }}>Back to Brief →</button>
+            </div>
+          )}
+
+          <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
         </div>
       )}
     </div>
