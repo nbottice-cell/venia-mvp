@@ -162,55 +162,32 @@ export default function LaunchPage() {
 
   // ── PROMPTS ──
   async function sendAnswer() {
-    if (!currentAnswer.trim() || aiTyping || !framework) return
+    if (!currentAnswer.trim() || !framework) return
     const answer = currentAnswer.trim()
     setCurrentAnswer('')
 
-    const newChat = [...chat, { role: 'user' as const, text: answer }]
-    setChat(newChat)
     const newAnswers = [...answers, { tag: prompts[promptIndex].tag, answer }]
     setAnswers(newAnswers)
-    setAiTyping(true)
+    setChat(prev => [...prev, { role: 'user' as const, text: answer }])
 
     const isLast = promptIndex + 1 >= prompts.length
 
-    try {
-      const data = await aiCall('respond_to_answer', {
-        framework,
-        promptTag: prompts[promptIndex].tag,
-        question: prompts[promptIndex].q,
-        answer,
-        conversationHistory: newChat,
-        isLastQuestion: isLast,
-      })
-      const reply = (data as {reply: string}).reply
-
-      setAiTyping(false)
-
-      if (isLast) {
-        setChat(prev => [...prev, { role: 'ai', text: reply }])
-        setBriefLoading(true)
-        setStage('brief')
-        try {
-          const briefData = await aiCall('generate_brief', { framework, rawIdea, answers: newAnswers })
-          setBrief(briefData as Brief)
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Error'
-          alert('Could not generate brief: ' + msg)
-        } finally {
-          setBriefLoading(false)
-        }
-      } else {
-        const nextIndex = promptIndex + 1
-        setChat(prev => [...prev,
-          { role: 'ai', text: reply },
-          { role: 'ai', text: prompts[nextIndex].q }
-        ])
-        setPromptIndex(nextIndex)
+    if (isLast) {
+      setBriefLoading(true)
+      setStage('brief')
+      try {
+        const briefData = await aiCall('generate_brief', { framework, rawIdea, answers: newAnswers })
+        setBrief(briefData as Brief)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Error'
+        alert('Could not generate brief: ' + msg)
+      } finally {
+        setBriefLoading(false)
       }
-    } catch {
-      setAiTyping(false)
-      setChat(prev => [...prev, { role: 'ai', text: "I had trouble processing that. Can you rephrase?" }])
+    } else {
+      const nextIndex = promptIndex + 1
+      setChat(prev => [...prev, { role: 'ai', text: prompts[nextIndex].q }])
+      setPromptIndex(nextIndex)
     }
   }
 
