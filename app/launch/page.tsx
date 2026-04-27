@@ -426,48 +426,43 @@ export default function LaunchPage() {
       {/* ── PROMPTS ── */}
       {stage === 'prompts' && (
         <div style={wrap}>
-          <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '500', color: '#111923', flexShrink: 0 }}>{promptIndex + 1}</div>
-            <div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#8E8B7A', letterSpacing: '0.08em' }}>Question {promptIndex + 1} of {prompts.length}</div>
-              <div style={{ fontSize: '12px', color: '#4A4838' }}>{FRAMEWORKS.find(f => f.id === framework)?.name} Path</div>
-            </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-              {prompts.map((_, i) => (
-                <div key={i} style={{ width: '7px', height: '7px', borderRadius: '50%', background: i < promptIndex ? '#4ADE80' : i === promptIndex ? '#C9A84C' : 'rgba(255,255,255,0.1)' }} />
-              ))}
-            </div>
+          {/* Progress dots */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '32px' }}>
+            {prompts.map((_, i) => (
+              <div key={i} style={{ width: i === promptIndex ? '20px' : '7px', height: '7px', borderRadius: '4px', background: i < promptIndex ? '#4ADE80' : i === promptIndex ? '#C9A84C' : 'rgba(255,255,255,0.1)', transition: 'all 0.3s' }} />
+            ))}
           </div>
 
-          <div style={card}>
-            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(17px, 2.5vw, 21px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em' }}>{prompts[promptIndex]?.q}</p>
+          {/* Question */}
+          <div style={{ ...card, marginBottom: '20px' }}>
+            <div style={eyebrow}>{prompts[promptIndex]?.tag}</div>
+            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em', margin: 0 }}>
+              {prompts[promptIndex]?.q}
+            </p>
           </div>
 
-          {chat.length > 1 && (
-            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
-              {chat.slice(1).map((msg, i) => (
-                <div key={i} style={{ display: 'flex', gap: '8px', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, background: msg.role === 'ai' ? 'linear-gradient(135deg, #C9A84C, #2DD4BF)' : 'linear-gradient(135deg, #C9A84C, #E07B8A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923' }}>{msg.role === 'ai' ? 'V' : 'Me'}</div>
-                  <div style={{ maxWidth: '82%', padding: '10px 13px', fontSize: '13px', lineHeight: '1.65', background: msg.role === 'ai' ? '#18222E' : 'rgba(201,168,76,0.18)', border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(201,168,76,0.3)', color: msg.role === 'ai' ? '#C8C4B4' : '#1A2332', borderRadius: msg.role === 'ai' ? '4px 10px 10px 10px' : '10px 4px 10px 10px', fontWeight: msg.role === 'user' ? '500' : '400' }}>{msg.text}</div>
-                </div>
-              ))}
-              {aiTyping && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #2DD4BF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', color: '#111923', flexShrink: 0 }}>V</div>
-                  <div style={{ padding: '14px 16px', borderRadius: '4px 10px 10px 10px', background: '#18222E', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '5px' }}>
-                    {[0,1,2].map(i => <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#C9A84C', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <textarea value={currentAnswer} onChange={(e) => setCurrentAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }} placeholder="Type your answer… (Enter to send)" disabled={aiTyping} rows={2} style={{ flex: 1, padding: '11px 13px', background: '#18222E', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", resize: 'none', opacity: aiTyping ? 0.6 : 1 } as React.CSSProperties} />
-            <button onClick={sendAnswer} disabled={!currentAnswer.trim() || aiTyping} style={{ width: '44px', height: '44px', borderRadius: '10px', background: !currentAnswer.trim() || aiTyping ? 'rgba(201,168,76,0.3)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', border: 'none', cursor: !currentAnswer.trim() || aiTyping ? 'not-allowed' : 'pointer', color: '#111923', fontSize: '18px', flexShrink: 0, alignSelf: 'flex-end' }}>→</button>
+          {/* Answer */}
+          <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.14)', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.18)' }}>
+            <label style={label}>Your answer</label>
+            <textarea
+              value={currentAnswer}
+              onChange={(e) => setCurrentAnswer(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer() } }}
+              placeholder="Write whatever comes to mind — there are no wrong answers."
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties}
+              onFocus={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.4)'}
+              onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'}
+              autoFocus
+            />
+            <button
+              onClick={sendAnswer}
+              disabled={!currentAnswer.trim()}
+              style={{ ...goldBtn, width: '100%', marginTop: '12px', opacity: currentAnswer.trim() ? 1 : 0.4 }}
+            >
+              {promptIndex + 1 >= prompts.length ? 'Build My Brief →' : 'Next Question →'}
+            </button>
           </div>
-          <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
         </div>
       )}
 
