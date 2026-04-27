@@ -12,14 +12,22 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [userType, setUserType] = useState<'inventor' | 'cofounder' | 'business' | ''>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  const USER_TYPES = [
+    { id: 'inventor',   icon: '💡', label: 'Inventor',    desc: 'I have ideas I want to develop, launch, or license.' },
+    { id: 'cofounder',  icon: '🤝', label: 'Co-Founder',  desc: 'I want to join a team or offer my skills to a project.' },
+    { id: 'business',   icon: '🏢', label: 'Business',    desc: 'I represent a company looking for talent, ideas, or licensing.' },
+  ] as const
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
+    if (mode === 'signup' && !userType) { setError('Please select how you are joining Venia.'); return }
     setLoading(true)
 
     try {
@@ -27,20 +35,21 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: {
-            data: { full_name: name },
-          },
+          options: { data: { full_name: name, user_type: userType } },
         })
         if (error) throw error
         setSuccess('Account created! Check your email to confirm, then sign in.')
         setMode('signin')
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        router.push('/welcome')
+        const type = data.user?.user_metadata?.user_type
+        if (type === 'cofounder') router.push('/connect/list-yourself?onboarding=1')
+        else if (type === 'business') router.push('/onboarding/business')
+        else router.push('/welcome')
       }
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong. Please try again.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -238,6 +247,28 @@ export default function AuthPage() {
                 onBlur={(e) => e.target.style.borderColor = 'rgba(201,168,76,0.15)'}
               />
             </div>
+
+            {/* User type — signup only */}
+            {mode === 'signup' && (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '10px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)' }}>
+                  I am joining as
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {USER_TYPES.map(t => (
+                    <button key={t.id} type="button" onClick={() => setUserType(t.id)}
+                      style={{ background: userType === t.id ? 'rgba(201,168,76,0.1)' : 'rgba(17,25,35,0.6)', border: `1px solid ${userType === t.id ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '12px 14px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.15s' }}>
+                      <span style={{ fontSize: '20px', flexShrink: 0 }}>{t.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: userType === t.id ? '#EEE8D8' : '#8E8B7A', marginBottom: '2px' }}>{t.label}</div>
+                        <div style={{ fontSize: '11px', color: '#4A4838', lineHeight: '1.4' }}>{t.desc}</div>
+                      </div>
+                      {userType === t.id && <span style={{ color: '#C9A84C', fontSize: '14px', flexShrink: 0 }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Error / Success messages */}
             {error && (
