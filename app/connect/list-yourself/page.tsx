@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -59,6 +59,14 @@ const CATEGORY_PROMPTS: Record<string, { q: string; placeholder: string }[]> = {
 }
 
 export default function ListYourselfPage() {
+  return (
+    <Suspense>
+      <ListYourselfInner />
+    </Suspense>
+  )
+}
+
+function ListYourselfInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isOnboarding = searchParams.get('onboarding') === '1'
