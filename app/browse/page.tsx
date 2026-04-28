@@ -157,14 +157,14 @@ export default function BrowsePage() {
                     <button
                       onClick={() => !isOwn && !isExample && vote(idea.id, 'up')}
                       disabled={isOwn || isExample || isVoting}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#4A4838', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#8E8B7A', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
                       ▲
                     </button>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: score > 0 ? '#4ADE80' : score < 0 ? '#E07B8A' : '#4A4838', minWidth: '20px', textAlign: 'center' }}>{score}</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: score > 0 ? '#4ADE80' : score < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>{score}</div>
                     <button
                       onClick={() => !isOwn && !isExample && vote(idea.id, 'down')}
                       disabled={isOwn || isExample || isVoting}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.08)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#4A4838', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#8E8B7A', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
                       ▼
                     </button>
                   </div>
@@ -248,14 +248,14 @@ export default function BrowsePage() {
                   <button
                     onClick={() => !detailIdea.isExample && detailIdea.user_id !== currentUserId && vote(detailIdea.id, 'up')}
                     disabled={detailIdea.isExample || detailIdea.user_id === currentUserId}
-                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'up' ? '#4ADE80' : '#4A4838', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▲</button>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: ((detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)) > 0 ? '#4ADE80' : '#4A4838', minWidth: '20px', textAlign: 'center' }}>
+                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'up' ? '#4ADE80' : '#8E8B7A', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▲</button>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: ((detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)) > 0 ? '#4ADE80' : ((detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)) < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>
                     {(detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)}
                   </span>
                   <button
                     onClick={() => !detailIdea.isExample && detailIdea.user_id !== currentUserId && vote(detailIdea.id, 'down')}
                     disabled={detailIdea.isExample || detailIdea.user_id === currentUserId}
-                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'down' ? '#E07B8A' : '#4A4838', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▼</button>
+                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'down' ? '#E07B8A' : '#8E8B7A', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▼</button>
                 </div>
 
                 {!detailIdea.isExample && detailIdea.user_id !== currentUserId && (
