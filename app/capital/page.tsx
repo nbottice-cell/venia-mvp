@@ -20,6 +20,8 @@ type Raise = {
   founder: string
   location: string
   traction: string
+  verified?: boolean
+  media?: { pitchDeck?: string, images?: string[], videoUrl?: string }
 }
 
 const EXAMPLE_RAISES: Raise[] = [
@@ -35,6 +37,8 @@ const EXAMPLE_RAISES: Raise[] = [
     founder: 'Marcus T.',
     location: 'San Francisco, CA',
     traction: '12 beta customers · $8k MRR',
+    verified: true,
+    media: { pitchDeck: 'EchoAI_Seed_Deck_2026.pdf', images: ['product-demo.png', 'team.jpg'], videoUrl: 'https://youtube.com/watch?v=demo' },
   },
   {
     id: 'r2',
@@ -48,6 +52,8 @@ const EXAMPLE_RAISES: Raise[] = [
     founder: 'Priya K.',
     location: 'Austin, TX',
     traction: 'Working prototype · 400 waitlist signups',
+    verified: true,
+    media: { pitchDeck: 'SipStill_Pitch_Deck.pdf', images: ['prototype-photo.jpg'] },
   },
   {
     id: 'r3',
@@ -61,6 +67,8 @@ const EXAMPLE_RAISES: Raise[] = [
     founder: 'James R.',
     location: 'Portland, OR',
     traction: '200 gardeners in beta · $2k GMV/month',
+    verified: false,
+    media: { videoUrl: 'https://youtube.com/watch?v=demo2' },
   },
   {
     id: 'r4',
@@ -74,6 +82,8 @@ const EXAMPLE_RAISES: Raise[] = [
     founder: 'Aisha M.',
     location: 'New York, NY',
     traction: '1,200 members · 340 exchanges completed',
+    verified: true,
+    media: { pitchDeck: 'SkillBridge_Deck_v3.pdf', images: ['dashboard.png', 'mobile-app.png', 'metrics.png'] },
   },
   {
     id: 'r5',
@@ -87,6 +97,8 @@ const EXAMPLE_RAISES: Raise[] = [
     founder: 'Chris B.',
     location: 'Miami, FL',
     traction: '2,400 beta users across 5 Miami venues',
+    verified: false,
+    media: { pitchDeck: 'Favilla_Investor_Brief.pdf', videoUrl: 'https://youtube.com/watch?v=demo3' },
   },
 ]
 
@@ -112,6 +124,10 @@ export default function CapitalPage() {
   const [postEquity, setPostEquity] = useState('')
   const [postUse, setPostUse] = useState('')
   const [postStage, setPostStage] = useState('')
+  // Media state
+  const [postPitchDeck, setPostPitchDeck] = useState<string | null>(null)
+  const [postImages, setPostImages] = useState<string[]>([])
+  const [postVideoUrl, setPostVideoUrl] = useState('')
 
   const filtered = stageFilter === 'All'
     ? EXAMPLE_RAISES
@@ -133,7 +149,10 @@ export default function CapitalPage() {
         onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(201,168,76,0.12)')}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '17px', fontWeight: '600', color: '#EEE8D8', flex: 1 }}>{raise.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '17px', fontWeight: '600', color: '#EEE8D8' }}>{raise.name}</div>
+            {raise.verified && <span title="Identity Verified" style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.35)', color: '#4ADE80', borderRadius: '4px', padding: '2px 7px', fontSize: '9px', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em', flexShrink: 0 }}>✓ Verified</span>}
+          </div>
           <div style={{ background: stageColor.bg, border: `1px solid ${stageColor.border}`, color: stageColor.text, fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '3px 9px', borderRadius: '4px', flexShrink: 0 }}>{raise.stage}</div>
           <div style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '3px 9px', borderRadius: '4px', flexShrink: 0 }}>{raise.sector}</div>
         </div>
@@ -167,6 +186,7 @@ export default function CapitalPage() {
       <nav style={{ height: '52px', background: 'rgba(17,25,35,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(201,168,76,0.12)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '14px', position: 'sticky' as const, top: 0, zIndex: 50 }}>
         <button onClick={() => router.push('/welcome')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8E8B7A', fontSize: '12px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>← Back</button>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', fontWeight: '600', color: '#EEE8D8', flex: 1 }}>Capital</div>
+        <button onClick={() => router.push('/verify')} style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', color: '#4ADE80', padding: '7px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✓ Get Verified</button>
         {tab === 'raise' && (
           <button onClick={() => { setShowPost(true); setPostDone(false) }} style={{ ...goldBtn, padding: '7px 16px', fontSize: '12px' }}>+ Post Your Raise</button>
         )}
@@ -296,6 +316,42 @@ export default function CapitalPage() {
 
               <div style={{ height: '1px', background: 'rgba(201,168,76,0.1)', marginBottom: '20px' }} />
 
+              {/* Media */}
+              {detailRaise.media && (Object.keys(detailRaise.media).some(k => detailRaise.media![k as keyof typeof detailRaise.media])) && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)', marginBottom: '12px' }}>◈ Media & Materials</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '8px' }}>
+                    {detailRaise.media.pitchDeck && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '8px 12px' }}>
+                        <span style={{ fontSize: '16px' }}>📄</span>
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '600', color: '#EEE8D8' }}>{detailRaise.media.pitchDeck}</div>
+                          <div style={{ fontSize: '10px', color: '#8E8B7A' }}>Pitch Deck</div>
+                        </div>
+                      </div>
+                    )}
+                    {detailRaise.media.videoUrl && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(224,123,138,0.08)', border: '1px solid rgba(224,123,138,0.2)', borderRadius: '8px', padding: '8px 12px' }}>
+                        <span style={{ fontSize: '16px' }}>▶</span>
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '600', color: '#EEE8D8' }}>Demo Video</div>
+                          <div style={{ fontSize: '10px', color: '#8E8B7A' }}>YouTube / Vimeo</div>
+                        </div>
+                      </div>
+                    )}
+                    {detailRaise.media.images?.map((img, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '8px', padding: '8px 12px' }}>
+                        <span style={{ fontSize: '16px' }}>🖼</span>
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '600', color: '#EEE8D8' }}>{img}</div>
+                          <div style={{ fontSize: '10px', color: '#8E8B7A' }}>Image</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Coming soon notice */}
               <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px' }}>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '4px' }}>Coming Soon</div>
@@ -367,6 +423,46 @@ export default function CapitalPage() {
                   <div>
                     <label style={labelStyle}>Use of funds</label>
                     <textarea value={postUse} onChange={e => setPostUse(e.target.value)} placeholder="What will you use the money for?" rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.65' } as React.CSSProperties} onFocus={e => e.target.style.borderColor = 'rgba(201,168,76,0.4)'} onBlur={e => e.target.style.borderColor = 'rgba(201,168,76,0.15)'} />
+                  </div>
+
+                  {/* Media uploads */}
+                  <div>
+                    <label style={labelStyle}>Media & Materials <span style={{ opacity: 0.5, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Pitch Deck */}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '12px', background: postPitchDeck ? 'rgba(201,168,76,0.08)' : 'rgba(17,25,35,0.6)', border: `1px solid ${postPitchDeck ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px', padding: '12px 14px', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <span style={{ fontSize: '20px' }}>📄</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: postPitchDeck ? '#C9A84C' : '#8E8B7A' }}>{postPitchDeck || 'Upload Pitch Deck'}</div>
+                          <div style={{ fontSize: '11px', color: '#4A4838' }}>PDF · Max 20MB</div>
+                        </div>
+                        {postPitchDeck && <button type="button" onClick={e => { e.preventDefault(); setPostPitchDeck(null) }} style={{ background: 'none', border: 'none', color: '#8E8B7A', cursor: 'pointer', fontSize: '14px', padding: '0' }}>✕</button>}
+                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) setPostPitchDeck(e.target.files[0].name) }} />
+                      </label>
+
+                      {/* Images */}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '12px', background: postImages.length > 0 ? 'rgba(167,139,250,0.08)' : 'rgba(17,25,35,0.6)', border: `1px solid ${postImages.length > 0 ? 'rgba(167,139,250,0.3)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px', padding: '12px 14px', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        <span style={{ fontSize: '20px' }}>🖼</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: postImages.length > 0 ? '#A78BFA' : '#8E8B7A' }}>{postImages.length > 0 ? `${postImages.length} image${postImages.length > 1 ? 's' : ''} selected` : 'Upload Product Images'}</div>
+                          <div style={{ fontSize: '11px', color: '#4A4838' }}>JPG, PNG · Up to 5 files</div>
+                        </div>
+                        {postImages.length > 0 && <button type="button" onClick={e => { e.preventDefault(); setPostImages([]) }} style={{ background: 'none', border: 'none', color: '#8E8B7A', cursor: 'pointer', fontSize: '14px', padding: '0' }}>✕</button>}
+                        <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) setPostImages(Array.from(e.target.files).map(f => f.name)) }} />
+                      </label>
+
+                      {/* Video link */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px 14px' }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>▶</span>
+                        <input
+                          type="url"
+                          value={postVideoUrl}
+                          onChange={e => setPostVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube or Vimeo link"
+                          style={{ background: 'none', border: 'none', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", flex: 1 }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
