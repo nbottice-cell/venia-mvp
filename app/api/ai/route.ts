@@ -236,6 +236,26 @@ Your response now:`
     }
 
     // ════════════════════════════════════════
+    // ACTION: journal_to_brief
+    // Turn a single journal entry into a full Idea Brief
+    // ════════════════════════════════════════
+    if (action === 'journal_to_brief') {
+      const { content } = payload as { content: string }
+
+      const system = `You are Venia AI reading one journal entry from a founder and extracting the most commercially promising thread from it. The entry may be casual, exploratory, or stream-of-consciousness — your job is to find the strongest business idea signal and build it into a complete, specific Idea Brief. Never be generic. Be specific to what they actually wrote. Respond with ONLY a valid JSON object. No markdown.`
+
+      const user = `Journal entry:
+"${content.slice(0, 3000)}"
+
+Generate a complete Idea Brief grounded in this entry. Return JSON with: "names" (3 product name ideas relevant to what they wrote), "pitch" (one sentence), "problem" (2-3 sentences), "solution" (2-3 sentences), "customer" (1-2 sentences), "whyNow" (1-2 sentences), "unfairAdvantage" (1-2 sentences).
+
+ONLY the JSON object.`
+
+      const result = await callClaude(system, user, 2048)
+      return NextResponse.json({ success: true, data: parseJSON(result) })
+    }
+
+    // ════════════════════════════════════════
     // ACTION: synthesize_journal
     // Read all journal entries and surface 2-3 business ideas from patterns
     // ════════════════════════════════════════
