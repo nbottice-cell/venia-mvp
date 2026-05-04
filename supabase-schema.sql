@@ -96,3 +96,25 @@ $$ language plpgsql;
 create trigger ideas_updated_at
   before update on public.ideas
   for each row execute procedure public.handle_updated_at();
+
+-- JOURNAL ENTRIES TABLE
+create table if not exists public.journal_entries (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  user_id    uuid references auth.users(id) on delete cascade not null,
+  content    text not null
+);
+
+alter table public.journal_entries enable row level security;
+
+create policy "Users can view their own journal entries"
+  on public.journal_entries for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own journal entries"
+  on public.journal_entries for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own journal entries"
+  on public.journal_entries for delete
+  using (auth.uid() = user_id);

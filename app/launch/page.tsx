@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-type Stage = 'choose' | 'refine' | 'guided' | 'prompts' | 'brief' | 'diagnostic' | 'revenue' | 'pitch'
+type Stage = 'choose' | 'refine' | 'guided' | 'prompts' | 'brief' | 'diagnostic' | 'revenue' | 'pitch' | 'quickbuild'
 type Framework = 'frustration' | 'skill' | 'community' | 'trend' | 'ambition'
 
 const FRAMEWORKS = [
@@ -126,6 +126,12 @@ export default function LaunchPage() {
   const [pitchVerdict, setPitchVerdict] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
+
+  // Quick Build state
+  const [qbHistory, setQbHistory] = useState<{question: string, answer: string}[]>([])
+  const [qbQuestion, setQbQuestion] = useState<{tag: string, question: string, choices: string[]} | null>(null)
+  const [qbLoading, setQbLoading] = useState(false)
+
   const chatEndRef = useRef<HTMLDivElement>(null)
   const pitchEndRef = useRef<HTMLDivElement>(null)
 
@@ -268,6 +274,46 @@ export default function LaunchPage() {
     }
   }
 
+  // ── QUICK BUILD ──
+  async function startQuickBuild() {
+    setStage('quickbuild')
+    setQbHistory([])
+    setQbQuestion(null)
+    setQbLoading(true)
+    try {
+      const result = await aiCall('quick_build', { history: [], questionNumber: 0 })
+      setQbQuestion(result as {tag: string, question: string, choices: string[]})
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert('Quick Build failed: ' + msg)
+    } finally {
+      setQbLoading(false)
+    }
+  }
+
+  async function selectQbChoice(choice: string) {
+    if (!qbQuestion || qbLoading) return
+    const newHistory = [...qbHistory, { question: qbQuestion.question, answer: choice }]
+    setQbHistory(newHistory)
+    setQbQuestion(null)
+    setQbLoading(true)
+    try {
+      const result = await aiCall('quick_build', { history: newHistory, questionNumber: newHistory.length })
+      const res = result as {type: string}
+      if (res.type === 'brief') {
+        setBrief(result as Brief)
+        setStage('brief')
+      } else {
+        setQbQuestion(result as {tag: string, question: string, choices: string[]})
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert('Quick Build failed: ' + msg)
+    } finally {
+      setQbLoading(false)
+    }
+  }
+
   // ── SAVE ──
   async function saveIdea(path: 'build' | 'license') {
     setSaving(true)
@@ -313,7 +359,7 @@ export default function LaunchPage() {
 
   const stageLabel: Record<Stage, string> = {
     choose: 'Start', refine: 'Refine', guided: 'Path', prompts: 'Discover',
-    brief: 'Brief', diagnostic: 'Market', revenue: 'Revenue', pitch: 'Pitch',
+    brief: 'Brief', diagnostic: 'Market', revenue: 'Revenue', pitch: 'Pitch', quickbuild: 'Quick Build',
   }
 
   return (
@@ -339,10 +385,11 @@ export default function LaunchPage() {
             <p style={sub}>Both paths lead to a structured Idea Brief, market analysis, revenue paths, and a pitch simulator with real AI feedback.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {[
-                { id: 'refine', icon: '💡', title: 'I Have an Idea', desc: 'You know what you want to build. Let AI help you sharpen it.', tag: 'Refine' },
-                { id: 'guided', icon: '🌱', title: 'I Have a Feeling', desc: 'You know what frustrates or excites you. Guided questions will uncover what is hiding there.', tag: 'Guided' },
+                { id: 'refine', icon: '💡', title: 'I Have an Idea', desc: 'You know what you want to build. Let AI help you sharpen it.', tag: 'Refine', action: () => setStage('refine') },
+                { id: 'guided', icon: '🌱', title: 'I Have a Feeling', desc: 'You know what frustrates or excites you. Guided questions will uncover what is hiding there.', tag: 'Guided', action: () => setStage('guided') },
+                { id: 'quickbuild', icon: '⚡', title: 'Quick Build', desc: 'No blank page. Tap through 7 focused questions and get a complete Idea Brief in under 3 minutes.', tag: 'Quick Build', action: startQuickBuild },
               ].map(door => (
-                <button key={door.id} onClick={() => setStage(door.id as Stage)}
+                <button key={door.id} onClick={door.action}
                   style={{ background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '18px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '14px' }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.25)'; e.currentTarget.style.transform = 'translateX(4px)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.transform = 'translateX(0)' }}>
@@ -727,6 +774,78 @@ export default function LaunchPage() {
           )}
 
           <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }`}</style>
+        </div>
+      )}
+
+      {/* ── QUICK BUILD ── */}
+      {stage === 'quickbuild' && (
+        <div style={wrap}>
+          {/* Progress */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '32px' }}>
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} style={{ width: i < qbHistory.length ? '20px' : '7px', height: '7px', borderRadius: '4px', background: i < qbHistory.length ? '#4ADE80' : i === qbHistory.length ? '#C9A84C' : 'rgba(255,255,255,0.1)', transition: 'all 0.3s' }} />
+            ))}
+          </div>
+
+          {/* Loading between questions */}
+          {qbLoading && (
+            <div style={{ ...card, textAlign: 'center', padding: '48px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '16px' }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#C9A84C', animation: `bounce 1.4s ${i * 0.2}s infinite` }} />)}
+              </div>
+              <div style={{ color: '#8E8B7A', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>
+                {qbHistory.length >= 7 ? 'Building your Idea Brief…' : 'Thinking…'}
+              </div>
+              <style>{`@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }`}</style>
+            </div>
+          )}
+
+          {/* Question + Choices */}
+          {!qbLoading && qbQuestion && (
+            <>
+              <div style={{ ...card, marginBottom: '16px' }}>
+                <div style={eyebrow}>{qbQuestion.tag}</div>
+                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em', margin: 0 }}>
+                  {qbQuestion.question}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                {qbQuestion.choices.map((choice, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selectQbChoice(choice)}
+                    style={{ background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(201,168,76,0.08)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.28)'; e.currentTarget.style.transform = 'translateX(4px)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(17,25,35,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.transform = 'translateX(0)' }}
+                  >
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(201,168,76,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', flexShrink: 0 }}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#C8C4B4', lineHeight: '1.5' }}>{choice}</div>
+                    <div style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.4)', fontSize: '14px' }}>→</div>
+                  </button>
+                ))}
+              </div>
+
+              {qbHistory.length > 0 && (
+                <button
+                  onClick={() => {
+                    const prev = qbHistory.slice(0, -1)
+                    setQbHistory(prev)
+                    setQbLoading(true)
+                    aiCall('quick_build', { history: prev, questionNumber: prev.length })
+                      .then(r => setQbQuestion(r as {tag: string, question: string, choices: string[]}))
+                      .catch(() => {})
+                      .finally(() => setQbLoading(false))
+                  }}
+                  style={ghostBtn}
+                >
+                  ← Back
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

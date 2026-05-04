@@ -235,6 +235,62 @@ Your response now:`
       return NextResponse.json({ success: true, data: { reply: result.trim() } })
     }
 
+    // ════════════════════════════════════════
+    // ACTION: synthesize_journal
+    // Read all journal entries and surface 2-3 business ideas from patterns
+    // ════════════════════════════════════════
+    if (action === 'synthesize_journal') {
+      const { entries } = payload as { entries: { date: string; content: string }[] }
+
+      const system = `You are Venia AI reading a founder's private journal entries and identifying business idea patterns. Look for recurring themes, frustrations, observations, or skills mentioned across entries. Every idea you suggest must be grounded in something the founder actually wrote — never invent ideas that have no basis in their notes. Be specific, not generic. Respond with ONLY a valid JSON object. No markdown.`
+
+      const entriesText = entries.map((e, i) =>
+        `Entry ${i + 1} (${e.date}):\n"${e.content}"`
+      ).join('\n\n')
+
+      const user = `Here are ${entries.length} journal entries from a founder:\n\n${entriesText}\n\nIdentify 2-3 business ideas that are genuinely suggested by patterns across these entries.\n\nReturn JSON: { "ideas": [ { "title": "short name for the idea", "description": "2-3 sentences on what this business could be and why it fits them", "connection": "quote or close paraphrase from their notes that sparked this idea" } ] }\n\nONLY the JSON object.`
+
+      const result = await callClaude(system, user, 1500)
+      return NextResponse.json({ success: true, data: parseJSON(result) })
+    }
+
+    // ════════════════════════════════════════
+    // ACTION: quick_build
+    // Branching Q&A — one focused question + 3-4 choices per turn
+    // After 7 answers, generates a full Idea Brief
+    // ════════════════════════════════════════
+    if (action === 'quick_build') {
+      const { history, questionNumber } = payload as {
+        history: { question: string; answer: string }[]
+        questionNumber: number
+      }
+
+      const system = `You are Venia AI running a Quick Build session. You discover a business idea by asking one sharp, focused question at a time — each with 3-4 concrete, distinct answer choices the founder can tap. Branch intelligently based on previous answers, digging deeper into what was revealed.
+
+ALWAYS respond with ONLY valid JSON. No markdown. No explanation outside the JSON.
+
+If questionNumber < 7: respond with { "type": "question", "tag": "short 2-3 word label", "question": "one focused question (not too long)", "choices": ["specific choice A", "specific choice B", "specific choice C", "optional choice D"] }
+If questionNumber >= 7: respond with { "type": "brief", "names": ["name1", "name2", "name3"], "pitch": "one sentence", "problem": "2-3 sentences", "solution": "2-3 sentences", "customer": "1-2 sentences", "whyNow": "1-2 sentences", "unfairAdvantage": "1-2 sentences" }
+
+Question guidelines:
+- Q1: What is driving this idea? (broad starting angle)
+- Q2-Q4: Narrow into domain, customer, and problem based on Q1 answer
+- Q5-Q6: Uncover the solution shape and monetization angle
+- Q7: Final clarifying question
+- Q8+: Generate the brief — use all answers to make it specific to THIS person
+
+Make each question feel like a mentor finding the idea, not a form to fill out.`
+
+      const historyText = history.length === 0
+        ? 'No previous answers yet.'
+        : history.map((h, i) => `Q${i + 1}: ${h.question}\nAnswer: ${h.answer}`).join('\n\n')
+
+      const user = `Quick Build session — questionNumber: ${questionNumber}\n\nPrevious Q&A:\n${historyText}\n\n${questionNumber >= 7 ? 'Generate the complete Idea Brief based on all answers above.' : 'Ask the next question with 3-4 tappable choices.'}\n\nRespond with ONLY the JSON.`
+
+      const result = await callClaude(system, user, questionNumber >= 7 ? 2048 : 512)
+      return NextResponse.json({ success: true, data: parseJSON(result) })
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 })
 
   } catch (error: unknown) {
