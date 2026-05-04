@@ -231,7 +231,7 @@ export default function NewJournalEntry() {
         <button
           onClick={save}
           disabled={wordCount === 0 || saving}
-          style={{ background: wordCount === 0 ? 'rgba(201,168,76,0.25)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: wordCount === 0 ? 'default' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif' }}>
+          style={{ background: wordCount === 0 ? 'rgba(201,168,76,0.25)' : 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: wordCount === 0 ? 'default' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
           {saving ? 'Saving…' : 'Save →'}
         </button>
       </nav>
