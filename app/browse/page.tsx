@@ -81,25 +81,38 @@ export default function BrowsePage() {
     return null
   }
 
-  async function upvote(ideaId: string) {
-    if (voting) return
+  async function vote(ideaId: string, type: 'up' | 'down') {
+    if (voting === ideaId) return
     const idea = ideas.find(i => i.id === ideaId)
-    if (!idea || idea.isExample || idea.user_id === currentUserId) return
-    setVoting(ideaId)
+    if (!idea) return
 
-    const alreadyLiked = voted[ideaId] === 'up'
-    const newUpvotes = alreadyLiked ? Math.max(0, (idea.upvotes || 0) - 1) : (idea.upvotes || 0) + 1
+    const existing = voted[ideaId]
+    if (existing === type) return // already voted this way
 
-    const { error } = await supabase.from('ideas').update({ upvotes: newUpvotes }).eq('id', ideaId)
-    if (!error) {
-      setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, upvotes: newUpvotes } : i))
-      if (alreadyLiked) {
-        setVoted(prev => { const n = { ...prev }; delete n[ideaId]; return n })
-      } else {
-        setVoted(prev => ({ ...prev, [ideaId]: 'up' }))
-      }
+    // Optimistic update — apply to UI immediately
+    const updates: { upvotes?: number, downvotes?: number } = {}
+    if (type === 'up') {
+      updates.upvotes = (idea.upvotes || 0) + 1
+      if (existing === 'down') updates.downvotes = Math.max(0, (idea.downvotes || 0) - 1)
+    } else {
+      updates.downvotes = (idea.downvotes || 0) + 1
+      if (existing === 'up') updates.upvotes = Math.max(0, (idea.upvotes || 0) - 1)
     }
-    setVoting(null)
+    setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, ...updates } : i))
+    setVoted(prev => ({ ...prev, [ideaId]: type }))
+
+    // Persist to DB for real ideas only
+    if (!idea.isExample) {
+      setVoting(ideaId)
+      const { error } = await supabase.from('ideas').update(updates).eq('id', ideaId)
+      if (error) {
+        // Revert on failure
+        setIdeas(prev => prev.map(i => i.id === ideaId ? idea : i))
+        if (existing) setVoted(prev => ({ ...prev, [ideaId]: existing }))
+        else setVoted(prev => { const n = { ...prev }; delete n[ideaId]; return n })
+      }
+      setVoting(null)
+    }
   }
 
   return (
@@ -149,25 +162,33 @@ export default function BrowsePage() {
           {filtered.map(idea => {
             const isOwn = idea.user_id === currentUserId
             const isExample = idea.isExample
-            const isLiked = voted[idea.id] === 'up'
+            const userVote = voted[idea.id]
             const isVoting = voting === idea.id
             const tier = getVerificationTier(idea.upvotes || 0)
-            const canInteract = !isOwn && !isExample
+            const score = (idea.upvotes || 0) - (idea.downvotes || 0)
+            const canVote = !isOwn
 
             return (
               <div key={idea.id} style={{ background: '#18222E', border: `1px solid ${tier ? tier.border : 'rgba(201,168,76,0.12)'}`, borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.18)', cursor: 'pointer', transition: 'border-color 0.2s' }} onClick={() => setDetailIdea(idea)}>
                 <div style={{ padding: '20px 20px 16px', display: 'flex', gap: '16px' }}>
 
-                  {/* Upvote column */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  {/* Vote column */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={() => upvote(idea.id)}
-                      disabled={!canInteract || isVoting}
-                      title={isOwn ? "Can't upvote your own idea" : isExample ? 'Example idea' : isLiked ? 'Remove upvote' : 'Upvote this idea'}
-                      style={{ width: '36px', height: '36px', borderRadius: '50%', border: `1px solid ${isLiked ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.12)'}`, background: isLiked ? 'rgba(224,123,138,0.15)' : 'transparent', color: isLiked ? '#E07B8A' : '#8E8B7A', cursor: canInteract ? 'pointer' : 'default', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: canInteract ? 1 : 0.4 }}>
-                      {isLiked ? '♥' : '♡'}
+                      onClick={() => canVote && vote(idea.id, 'up')}
+                      disabled={!canVote || isVoting}
+                      title={isOwn ? "Can't vote on your own idea" : 'Upvote'}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#8E8B7A', cursor: canVote ? 'pointer' : 'default', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn ? 0.35 : 1 }}>
+                      ▲
                     </button>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', fontWeight: '600', color: (idea.upvotes || 0) > 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>{idea.upvotes || 0}</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: score > 0 ? '#4ADE80' : score < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>{score}</div>
+                    <button
+                      onClick={() => canVote && vote(idea.id, 'down')}
+                      disabled={!canVote || isVoting}
+                      title={isOwn ? "Can't vote on your own idea" : 'Downvote'}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#8E8B7A', cursor: canVote ? 'pointer' : 'default', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn ? 0.35 : 1 }}>
+                      ▼
+                    </button>
                   </div>
 
                   {/* Content */}
@@ -252,28 +273,33 @@ export default function BrowsePage() {
 
               {/* Actions */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Upvote row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <button
-                    onClick={() => upvote(detailIdea.id)}
-                    disabled={detailIdea.isExample || detailIdea.user_id === currentUserId || voting === detailIdea.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', background: voted[detailIdea.id] === 'up' ? 'rgba(224,123,138,0.12)' : 'rgba(17,25,35,0.6)', border: `1px solid ${voted[detailIdea.id] === 'up' ? 'rgba(224,123,138,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '9px', padding: '10px 18px', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1, transition: 'all 0.15s' }}>
-                    <span style={{ fontSize: '18px', color: voted[detailIdea.id] === 'up' ? '#E07B8A' : '#8E8B7A' }}>{voted[detailIdea.id] === 'up' ? '♥' : '♡'}</span>
-                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '600', color: voted[detailIdea.id] === 'up' ? '#E07B8A' : '#8E8B7A' }}>{ideas.find(i => i.id === detailIdea.id)?.upvotes || detailIdea.upvotes || 0}</span>
-                    <span style={{ fontSize: '11px', color: '#8E8B7A' }}>{voted[detailIdea.id] === 'up' ? 'Liked' : 'Like this idea'}</span>
-                  </button>
-                  {(() => { const t = getVerificationTier(ideas.find(i => i.id === detailIdea.id)?.upvotes || detailIdea.upvotes || 0); return t ? <div style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '5px 10px', borderRadius: '6px' }}>{t.icon} {t.label}</div> : null })()}
-                  <button onClick={() => setDetailIdea(null)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '10px 14px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✕</button>
-                </div>
+                {/* Vote row */}
+                {(() => {
+                  const liveIdea = ideas.find(i => i.id === detailIdea.id) || detailIdea
+                  const liveScore = (liveIdea.upvotes || 0) - (liveIdea.downvotes || 0)
+                  const userVoteModal = voted[detailIdea.id]
+                  const canVoteModal = detailIdea.user_id !== currentUserId
+                  const tier = getVerificationTier(liveIdea.upvotes || 0)
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '9px', padding: '8px 16px' }}>
+                        <button onClick={() => canVoteModal && vote(detailIdea.id, 'up')} disabled={!canVoteModal || voting === detailIdea.id} style={{ background: 'none', border: 'none', cursor: canVoteModal ? 'pointer' : 'default', color: userVoteModal === 'up' ? '#4ADE80' : '#8E8B7A', fontSize: '16px', padding: '0', opacity: canVoteModal ? 1 : 0.35, lineHeight: 1 }}>▲</button>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '700', color: liveScore > 0 ? '#4ADE80' : liveScore < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '24px', textAlign: 'center' }}>{liveScore}</span>
+                        <button onClick={() => canVoteModal && vote(detailIdea.id, 'down')} disabled={!canVoteModal || voting === detailIdea.id} style={{ background: 'none', border: 'none', cursor: canVoteModal ? 'pointer' : 'default', color: userVoteModal === 'down' ? '#E07B8A' : '#8E8B7A', fontSize: '16px', padding: '0', opacity: canVoteModal ? 1 : 0.35, lineHeight: 1 }}>▼</button>
+                      </div>
+                      {tier && <div style={{ background: tier.bg, border: `1px solid ${tier.border}`, color: tier.color, fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '5px 10px', borderRadius: '6px' }}>{tier.icon} {tier.label}</div>}
+                      <button onClick={() => setDetailIdea(null)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '10px 14px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✕</button>
+                    </div>
+                  )
+                })()}
 
-                {/* Invest / Fund row */}
-                {!detailIdea.isExample && detailIdea.user_id !== currentUserId && (
+                {/* Invest / Fund — show for all ideas (sandbox mode) */}
+                {detailIdea.user_id !== currentUserId ? (
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={() => { setDetailIdea(null); setInvestModal(detailIdea); setInvestAmount(''); setInvestDone(false) }} style={{ flex: 1, background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>📈 Invest in this Idea</button>
                     <button onClick={() => { setDetailIdea(null); setFundModal(detailIdea); setFundAmount(''); setFundDone(false) }} style={{ flex: 1, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.35)', color: '#2DD4BF', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>🏦 Fund this Idea</button>
                   </div>
-                )}
-                {detailIdea.user_id === currentUserId && (
+                ) : (
                   <button onClick={() => { setDetailIdea(null); router.push(`/ideas/${detailIdea.id}`) }} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit your idea →</button>
                 )}
               </div>
