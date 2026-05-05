@@ -815,15 +815,15 @@ export default function LaunchPage() {
                   <button
                     key={i}
                     onClick={() => selectQbChoice(choice)}
-                    style={{ background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(201,168,76,0.08)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.28)'; e.currentTarget.style.transform = 'translateX(4px)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(17,25,35,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.transform = 'translateX(0)' }}
+                    style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.22)', borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(201,168,76,0.16)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.55)'; e.currentTarget.style.transform = 'translateX(4px)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#18222E'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)'; e.currentTarget.style.transform = 'translateX(0)' }}
                   >
-                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(201,168,76,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', flexShrink: 0 }}>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(201,168,76,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', flexShrink: 0 }}>
                       {String.fromCharCode(65 + i)}
                     </div>
-                    <div style={{ fontSize: '14px', color: '#C8C4B4', lineHeight: '1.5' }}>{choice}</div>
-                    <div style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.4)', fontSize: '14px' }}>→</div>
+                    <div style={{ fontSize: '14px', color: '#EEE8D8', lineHeight: '1.5' }}>{choice}</div>
+                    <div style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.6)', fontSize: '14px' }}>→</div>
                   </button>
                 ))}
               </div>
