@@ -39,11 +39,14 @@ export default function BrowsePage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'build' | 'license'>('all')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [voted, setVoted] = useState<Record<string, 'up' | 'down'>>({})
+  const [voted, setVoted] = useState<Record<string, 'up'>>({})
   const [voting, setVoting] = useState<string | null>(null)
   const [investModal, setInvestModal] = useState<Idea | null>(null)
   const [investAmount, setInvestAmount] = useState('')
   const [investDone, setInvestDone] = useState(false)
+  const [fundModal, setFundModal] = useState<Idea | null>(null)
+  const [fundAmount, setFundAmount] = useState('')
+  const [fundDone, setFundDone] = useState(false)
   const [detailIdea, setDetailIdea] = useState<Idea | null>(null)
 
   useEffect(() => {
@@ -70,29 +73,31 @@ export default function BrowsePage() {
     return matchFilter && matchSearch
   })
 
-  async function vote(ideaId: string, type: 'up' | 'down') {
+  function getVerificationTier(upvotes: number) {
+    if (upvotes >= 150) return { label: 'Verified', icon: '✦', color: '#C9A84C', bg: 'rgba(201,168,76,0.12)', border: 'rgba(201,168,76,0.3)' }
+    if (upvotes >= 75)  return { label: 'Community Pick', icon: '⭐', color: '#E2C06A', bg: 'rgba(226,192,106,0.1)', border: 'rgba(226,192,106,0.25)' }
+    if (upvotes >= 25)  return { label: 'Gaining Steam', icon: '🔥', color: '#F97316', bg: 'rgba(249,115,22,0.1)', border: 'rgba(249,115,22,0.25)' }
+    if (upvotes >= 10)  return { label: 'Early Signal', icon: '🌱', color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', border: 'rgba(74,222,128,0.25)' }
+    return null
+  }
+
+  async function upvote(ideaId: string) {
     if (voting) return
-    const existing = voted[ideaId]
-    if (existing === type) return // already voted this way
+    const idea = ideas.find(i => i.id === ideaId)
+    if (!idea || idea.isExample || idea.user_id === currentUserId) return
     setVoting(ideaId)
 
-    const idea = ideas.find(i => i.id === ideaId)
-    if (!idea) { setVoting(null); return }
+    const alreadyLiked = voted[ideaId] === 'up'
+    const newUpvotes = alreadyLiked ? Math.max(0, (idea.upvotes || 0) - 1) : (idea.upvotes || 0) + 1
 
-    // Calculate new counts
-    const updates: { upvotes?: number, downvotes?: number } = {}
-    if (type === 'up') {
-      updates.upvotes = (idea.upvotes || 0) + 1
-      if (existing === 'down') updates.downvotes = Math.max(0, (idea.downvotes || 0) - 1)
-    } else {
-      updates.downvotes = (idea.downvotes || 0) + 1
-      if (existing === 'up') updates.upvotes = Math.max(0, (idea.upvotes || 0) - 1)
-    }
-
-    const { error } = await supabase.from('ideas').update(updates).eq('id', ideaId)
+    const { error } = await supabase.from('ideas').update({ upvotes: newUpvotes }).eq('id', ideaId)
     if (!error) {
-      setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, ...updates } : i))
-      setVoted(prev => ({ ...prev, [ideaId]: type }))
+      setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, upvotes: newUpvotes } : i))
+      if (alreadyLiked) {
+        setVoted(prev => { const n = { ...prev }; delete n[ideaId]; return n })
+      } else {
+        setVoted(prev => ({ ...prev, [ideaId]: 'up' }))
+      }
     }
     setVoting(null)
   }
@@ -144,47 +149,51 @@ export default function BrowsePage() {
           {filtered.map(idea => {
             const isOwn = idea.user_id === currentUserId
             const isExample = idea.isExample
-            const userVote = voted[idea.id]
+            const isLiked = voted[idea.id] === 'up'
             const isVoting = voting === idea.id
-            const score = (idea.upvotes || 0) - (idea.downvotes || 0)
+            const tier = getVerificationTier(idea.upvotes || 0)
+            const canInteract = !isOwn && !isExample
 
             return (
-              <div key={idea.id} style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.12)', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.18)', cursor: 'pointer' }} onClick={() => setDetailIdea(idea)}>
+              <div key={idea.id} style={{ background: '#18222E', border: `1px solid ${tier ? tier.border : 'rgba(201,168,76,0.12)'}`, borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.18)', cursor: 'pointer', transition: 'border-color 0.2s' }} onClick={() => setDetailIdea(idea)}>
                 <div style={{ padding: '20px 20px 16px', display: 'flex', gap: '16px' }}>
 
-                  {/* Vote column */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  {/* Upvote column */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={() => !isOwn && !isExample && vote(idea.id, 'up')}
-                      disabled={isOwn || isExample || isVoting}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'up' ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'up' ? 'rgba(74,222,128,0.12)' : 'transparent', color: userVote === 'up' ? '#4ADE80' : '#8E8B7A', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
-                      ▲
+                      onClick={() => upvote(idea.id)}
+                      disabled={!canInteract || isVoting}
+                      title={isOwn ? "Can't upvote your own idea" : isExample ? 'Example idea' : isLiked ? 'Remove upvote' : 'Upvote this idea'}
+                      style={{ width: '36px', height: '36px', borderRadius: '50%', border: `1px solid ${isLiked ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.12)'}`, background: isLiked ? 'rgba(224,123,138,0.15)' : 'transparent', color: isLiked ? '#E07B8A' : '#8E8B7A', cursor: canInteract ? 'pointer' : 'default', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: canInteract ? 1 : 0.4 }}>
+                      {isLiked ? '♥' : '♡'}
                     </button>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: score > 0 ? '#4ADE80' : score < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>{score}</div>
-                    <button
-                      onClick={() => !isOwn && !isExample && vote(idea.id, 'down')}
-                      disabled={isOwn || isExample || isVoting}
-                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${userVote === 'down' ? 'rgba(224,123,138,0.5)' : 'rgba(255,255,255,0.15)'}`, background: userVote === 'down' ? 'rgba(224,123,138,0.12)' : 'transparent', color: userVote === 'down' ? '#E07B8A' : '#8E8B7A', cursor: isOwn || isExample ? 'default' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', opacity: isOwn || isExample ? 0.4 : 1 }}>
-                      ▼
-                    </button>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', fontWeight: '600', color: (idea.upvotes || 0) > 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>{idea.upvotes || 0}</div>
                   </div>
 
                   {/* Content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                       <div style={{ fontSize: '15px', fontWeight: '600', color: '#EEE8D8', flex: 1 }}>{idea.name}</div>
+                      {tier && (
+                        <div style={{ background: tier.bg, border: `1px solid ${tier.border}`, color: tier.color, fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '3px 8px', borderRadius: '4px', flexShrink: 0 }}>
+                          {tier.icon} {tier.label}
+                        </div>
+                      )}
                       <div style={{ background: idea.path === 'license' ? 'rgba(45,212,191,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${idea.path === 'license' ? 'rgba(45,212,191,0.25)' : 'rgba(201,168,76,0.2)'}`, color: idea.path === 'license' ? '#2DD4BF' : '#C9A84C', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '3px 8px', borderRadius: '4px', flexShrink: 0 }}>
                         {idea.path === 'license' ? '🏛️ License' : '⚡ Build'}
                       </div>
                       {isOwn && <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.15)', color: 'rgba(201,168,76,0.5)', fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '3px 8px', borderRadius: '4px', flexShrink: 0 }}>Yours</div>}
                     </div>
                     <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6', marginBottom: '12px' }}>{idea.pitch}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const }} onClick={e => e.stopPropagation()}>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: 'rgba(201,168,76,0.4)', letterSpacing: '0.06em' }}>{new Date(idea.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                       {isOwn ? (
                         <button onClick={() => router.push(`/ideas/${idea.id}`)} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit →</button>
                       ) : !isExample ? (
-                        <button onClick={() => { setInvestModal(idea); setInvestAmount(''); setInvestDone(false) }} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '5px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>💰 Invest</button>
+                        <>
+                          <button onClick={() => { setInvestModal(idea); setInvestAmount(''); setInvestDone(false) }} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>📈 Invest</button>
+                          <button onClick={() => { setFundModal(idea); setFundAmount(''); setFundDone(false) }} style={{ background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.3)', color: '#2DD4BF', padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>🏦 Fund</button>
+                        </>
                       ) : (
                         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.35)', padding: '4px 0' }}>Example idea</div>
                       )}
@@ -242,79 +251,126 @@ export default function BrowsePage() {
               <div style={{ height: '1px', background: 'rgba(201,168,76,0.1)', margin: '24px 0' }} />
 
               {/* Actions */}
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                {/* Vote */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '9px', padding: '8px 14px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Upvote row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <button
-                    onClick={() => !detailIdea.isExample && detailIdea.user_id !== currentUserId && vote(detailIdea.id, 'up')}
-                    disabled={detailIdea.isExample || detailIdea.user_id === currentUserId}
-                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'up' ? '#4ADE80' : '#8E8B7A', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▲</button>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', fontWeight: '600', color: ((detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)) > 0 ? '#4ADE80' : ((detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)) < 0 ? '#E07B8A' : '#8E8B7A', minWidth: '20px', textAlign: 'center' }}>
-                    {(detailIdea.upvotes || 0) - (detailIdea.downvotes || 0)}
-                  </span>
-                  <button
-                    onClick={() => !detailIdea.isExample && detailIdea.user_id !== currentUserId && vote(detailIdea.id, 'down')}
-                    disabled={detailIdea.isExample || detailIdea.user_id === currentUserId}
-                    style={{ background: 'none', border: 'none', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', color: voted[detailIdea.id] === 'down' ? '#E07B8A' : '#8E8B7A', fontSize: '14px', padding: '0', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1 }}>▼</button>
+                    onClick={() => upvote(detailIdea.id)}
+                    disabled={detailIdea.isExample || detailIdea.user_id === currentUserId || voting === detailIdea.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', background: voted[detailIdea.id] === 'up' ? 'rgba(224,123,138,0.12)' : 'rgba(17,25,35,0.6)', border: `1px solid ${voted[detailIdea.id] === 'up' ? 'rgba(224,123,138,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '9px', padding: '10px 18px', cursor: detailIdea.isExample || detailIdea.user_id === currentUserId ? 'default' : 'pointer', opacity: detailIdea.isExample || detailIdea.user_id === currentUserId ? 0.4 : 1, transition: 'all 0.15s' }}>
+                    <span style={{ fontSize: '18px', color: voted[detailIdea.id] === 'up' ? '#E07B8A' : '#8E8B7A' }}>{voted[detailIdea.id] === 'up' ? '♥' : '♡'}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: '600', color: voted[detailIdea.id] === 'up' ? '#E07B8A' : '#8E8B7A' }}>{ideas.find(i => i.id === detailIdea.id)?.upvotes || detailIdea.upvotes || 0}</span>
+                    <span style={{ fontSize: '11px', color: '#8E8B7A' }}>{voted[detailIdea.id] === 'up' ? 'Liked' : 'Like this idea'}</span>
+                  </button>
+                  {(() => { const t = getVerificationTier(ideas.find(i => i.id === detailIdea.id)?.upvotes || detailIdea.upvotes || 0); return t ? <div style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, padding: '5px 10px', borderRadius: '6px' }}>{t.icon} {t.label}</div> : null })()}
+                  <button onClick={() => setDetailIdea(null)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '10px 14px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✕</button>
                 </div>
 
+                {/* Invest / Fund row */}
                 {!detailIdea.isExample && detailIdea.user_id !== currentUserId && (
-                  <button onClick={() => { setDetailIdea(null); setInvestModal(detailIdea); setInvestAmount(''); setInvestDone(false) }} style={{ flex: 1, background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>💰 Invest in this Idea</button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={() => { setDetailIdea(null); setInvestModal(detailIdea); setInvestAmount(''); setInvestDone(false) }} style={{ flex: 1, background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>📈 Invest in this Idea</button>
+                    <button onClick={() => { setDetailIdea(null); setFundModal(detailIdea); setFundAmount(''); setFundDone(false) }} style={{ flex: 1, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.35)', color: '#2DD4BF', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>🏦 Fund this Idea</button>
+                  </div>
                 )}
                 {detailIdea.user_id === currentUserId && (
-                  <button onClick={() => { setDetailIdea(null); router.push(`/ideas/${detailIdea.id}`) }} style={{ flex: 1, background: 'none', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit your idea →</button>
+                  <button onClick={() => { setDetailIdea(null); router.push(`/ideas/${detailIdea.id}`) }} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit your idea →</button>
                 )}
-                <button onClick={() => setDetailIdea(null)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '12px 16px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✕</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Invest modal */}
+      {/* Invest modal — sandbox equity simulator */}
       {investModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setInvestModal(null)}>
           <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '20px', padding: '32px', maxWidth: '420px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
             {!investDone ? (
               <>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '8px' }}>💰 Invest in this idea</div>
+                <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '8px 12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '14px' }}>🎲</span>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#C9A84C' }}>Sandbox Mode — No real money involved</span>
+                </div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '8px' }}>📈 Claim a Sandbox Equity Stake</div>
                 <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', fontWeight: '600', color: '#EEE8D8', marginBottom: '6px' }}>{investModal.name}</div>
                 <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6', marginBottom: '24px' }}>{investModal.pitch}</p>
 
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)' }}>Investment amount</label>
+                  <label style={{ display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.7)' }}>Equity stake (sandbox %)</label>
                   <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' as const }}>
-                    {['$100', '$500', '$1,000', '$5,000'].map(amt => (
-                      <button key={amt} onClick={() => setInvestAmount(amt)} style={{ padding: '7px 14px', borderRadius: '8px', border: `1px solid ${investAmount === amt ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.08)'}`, background: investAmount === amt ? 'rgba(201,168,76,0.12)' : 'transparent', color: investAmount === amt ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>{amt}</button>
+                    {['0.5%', '1%', '2%', '5%', '10%'].map(pct => (
+                      <button key={pct} onClick={() => setInvestAmount(pct)} style={{ padding: '7px 14px', borderRadius: '8px', border: `1px solid ${investAmount === pct ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.08)'}`, background: investAmount === pct ? 'rgba(201,168,76,0.12)' : 'transparent', color: investAmount === pct ? '#C9A84C' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>{pct}</button>
                     ))}
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Or enter a custom amount…"
-                    value={investAmount}
-                    onChange={e => setInvestAmount(e.target.value)}
-                    style={{ width: '100%', padding: '11px 13px', background: 'rgba(17,25,35,0.8)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', outline: 'none', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", boxSizing: 'border-box' as const }}
-                    onFocus={e => e.target.style.borderColor = 'rgba(201,168,76,0.4)'}
-                    onBlur={e => e.target.style.borderColor = 'rgba(201,168,76,0.15)'}
-                  />
-                </div>
-
-                <div style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
-                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#C9A84C', marginBottom: '4px' }}>Coming Soon</div>
-                  <p style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.55' }}>Investment processing is not yet live. Submitting your interest lets the founder know you are serious and reserves your place when it opens.</p>
+                  <p style={{ fontSize: '11px', color: 'rgba(201,168,76,0.5)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', marginBottom: 0 }}>This claim is fictional — like Monopoly deeds. It signals your interest to the founder.</p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button onClick={() => setInvestModal(null)} style={{ flex: 1, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '12px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
-                  <button onClick={() => setInvestDone(true)} disabled={!investAmount} style={{ flex: 2, background: investAmount ? 'linear-gradient(135deg, #C9A84C, #E2C06A)' : 'rgba(201,168,76,0.2)', color: '#111923', border: 'none', padding: '12px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: investAmount ? 'pointer' : 'not-allowed', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Express Interest →</button>
+                  <button onClick={() => setInvestDone(true)} disabled={!investAmount} style={{ flex: 2, background: investAmount ? 'linear-gradient(135deg, #C9A84C, #E2C06A)' : 'rgba(201,168,76,0.2)', color: '#111923', border: 'none', padding: '12px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: investAmount ? 'pointer' : 'not-allowed', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Claim Stake →</button>
                 </div>
               </>
             ) : (
               <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                <div style={{ fontSize: '40px', marginBottom: '16px' }}>✦</div>
-                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: '600', color: '#EEE8D8', marginBottom: '10px' }}>Interest noted.</div>
-                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.65', marginBottom: '24px' }}>The founder of <strong style={{ color: '#C9A84C' }}>{investModal.name}</strong> will be notified when investment opens. We will reach out when it is time.</p>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤝</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: '600', color: '#EEE8D8', marginBottom: '10px' }}>Stake claimed.</div>
+                <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#C9A84C', marginBottom: '4px' }}>Your Sandbox Portfolio</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#EEE8D8', fontFamily: "'Playfair Display', serif" }}>{investAmount} of {investModal.name}</div>
+                  <div style={{ fontSize: '11px', color: '#8E8B7A', marginTop: '4px' }}>Imaginary equity · Not a real security</div>
+                </div>
+                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.65', marginBottom: '24px' }}>The founder can see your interest. When {investModal.name} is ready for real funding, you will be first to know.</p>
                 <button onClick={() => setInvestModal(null)} style={{ background: 'linear-gradient(135deg, #C9A84C, #E2C06A)', color: '#111923', border: 'none', padding: '12px 28px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Back to Feed</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fund modal — Venia Credits crowdfunding simulator */}
+      {fundModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setFundModal(null)}>
+          <div style={{ background: '#18222E', border: '1px solid rgba(45,212,191,0.25)', borderRadius: '20px', padding: '32px', maxWidth: '420px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+            {!fundDone ? (
+              <>
+                <div style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '8px', padding: '8px 12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '14px' }}>🎲</span>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#2DD4BF' }}>Sandbox Mode — Venia Credits, not real money</span>
+                </div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase' as const, color: '#2DD4BF', marginBottom: '8px' }}>🏦 Back this Idea with Venia Credits</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', fontWeight: '600', color: '#EEE8D8', marginBottom: '6px' }}>{fundModal.name}</div>
+                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.6', marginBottom: '24px' }}>{fundModal.pitch}</p>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '7px', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'rgba(45,212,191,0.7)' }}>Pledge amount in Ⓥ Credits</label>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' as const }}>
+                    {['Ⓥ 500', 'Ⓥ 1,000', 'Ⓥ 5,000', 'Ⓥ 10,000'].map(amt => (
+                      <button key={amt} onClick={() => setFundAmount(amt)} style={{ padding: '7px 14px', borderRadius: '8px', border: `1px solid ${fundAmount === amt ? 'rgba(45,212,191,0.45)' : 'rgba(255,255,255,0.08)'}`, background: fundAmount === amt ? 'rgba(45,212,191,0.12)' : 'transparent', color: fundAmount === amt ? '#2DD4BF' : '#8E8B7A', fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>{amt}</button>
+                    ))}
+                  </div>
+                  <div style={{ background: 'rgba(45,212,191,0.05)', border: '1px solid rgba(45,212,191,0.15)', borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', color: '#2DD4BF', letterSpacing: '0.1em', marginBottom: '5px' }}>WHAT ARE VENIA CREDITS?</div>
+                    <p style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.55', margin: 0 }}>Venia Credits are imaginary crowdfunding tokens — like Monopoly money. They signal your enthusiasm to the founder and help ideas gain community momentum. No real currency is involved.</p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                  <button onClick={() => setFundModal(null)} style={{ flex: 1, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#8E8B7A', padding: '12px', borderRadius: '9px', fontSize: '13px', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
+                  <button onClick={() => setFundDone(true)} disabled={!fundAmount} style={{ flex: 2, background: fundAmount ? 'linear-gradient(135deg, #2DD4BF, #1EBFAA)' : 'rgba(45,212,191,0.2)', color: '#111923', border: 'none', padding: '12px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: fundAmount ? 'pointer' : 'not-allowed', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Pledge Credits →</button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚀</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: '600', color: '#EEE8D8', marginBottom: '10px' }}>You backed this idea.</div>
+                <div style={{ background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.2)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#2DD4BF', marginBottom: '4px' }}>Your Sandbox Pledge</div>
+                  <div style={{ fontSize: '26px', fontWeight: '700', color: '#EEE8D8', fontFamily: "'Playfair Display', serif" }}>{fundAmount}</div>
+                  <div style={{ fontSize: '11px', color: '#8E8B7A', marginTop: '4px' }}>Venia Credits · Imaginary currency</div>
+                </div>
+                <p style={{ fontSize: '13px', color: '#8E8B7A', lineHeight: '1.65', marginBottom: '24px' }}>Your support has been logged. The founder of <strong style={{ color: '#2DD4BF' }}>{fundModal.name}</strong> can see your backing. When real funding opens, believers like you go first.</p>
+                <button onClick={() => setFundModal(null)} style={{ background: 'linear-gradient(135deg, #2DD4BF, #1EBFAA)', color: '#111923', border: 'none', padding: '12px 28px', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Back to Feed</button>
               </div>
             )}
           </div>
