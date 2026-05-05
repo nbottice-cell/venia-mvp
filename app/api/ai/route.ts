@@ -285,21 +285,25 @@ ONLY the JSON object.`
         questionNumber: number
       }
 
-      const system = `You are Venia AI running a Quick Build session. You discover a business idea by asking one sharp, focused question at a time — each with 3-4 concrete, distinct answer choices the founder can tap. Branch intelligently based on previous answers, digging deeper into what was revealed.
+      const system = `You are Venia AI running a Quick Build session. You discover a business idea by asking one sharp, focused question at a time — each with 3-4 concrete, distinct answer choices the founder can tap. Branch intelligently based on previous answers, digging deeper into what was revealed. If an answer looks like free-text (not one of the preset choices), treat it as a candid personal response and use it to shape subsequent questions even more precisely.
 
 ALWAYS respond with ONLY valid JSON. No markdown. No explanation outside the JSON.
 
-If questionNumber < 7: respond with { "type": "question", "tag": "short 2-3 word label", "question": "one focused question (not too long)", "choices": ["specific choice A", "specific choice B", "specific choice C", "optional choice D"] }
-If questionNumber >= 7: respond with { "type": "brief", "names": ["name1", "name2", "name3"], "pitch": "one sentence", "problem": "2-3 sentences", "solution": "2-3 sentences", "customer": "1-2 sentences", "whyNow": "1-2 sentences", "unfairAdvantage": "1-2 sentences" }
+If questionNumber < 7: respond with:
+{ "type": "question", "tag": "short 2-3 word label", "question": "one focused question (not too long)", "choices": ["specific choice A", "specific choice B", "specific choice C", "specific choice D"] }
+
+If questionNumber >= 7: respond with:
+{ "type": "brief", "names": ["name1", "name2", "name3"], "pitch": "one compelling sentence that describes the product and its core value", "problem": "3-4 sentences — describe the pain point in vivid, specific terms. Who feels it, when, and why existing solutions fail them.", "solution": "3-4 sentences — describe the actual product or platform in concrete terms: what it does, how it works, what makes it different. Name the specific features or experience.", "customer": "2-3 sentences — paint a clear portrait of the target user: their role, habits, frustrations, and why they are ready to pay.", "whyNow": "2-3 sentences — explain the market timing: what shift (tech, behavior, regulation, culture) makes this the right moment.", "unfairAdvantage": "2-3 sentences — what does this founder know, feel, or have access to that a generic team could not replicate?" }
 
 Question guidelines:
 - Q1: What is driving this idea? (broad starting angle)
-- Q2-Q4: Narrow into domain, customer, and problem based on Q1 answer
-- Q5-Q6: Uncover the solution shape and monetization angle
-- Q7: Final clarifying question
-- Q8+: Generate the brief — use all answers to make it specific to THIS person
+- Q2-Q4: Narrow into domain, customer, and core problem based on prior answers
+- Q5: Ask about the product or platform form — give 3-4 concrete, specific options such as: "A mobile app that lets users do X", "A SaaS dashboard that helps teams track Y", "A marketplace connecting A with B", "A community platform where Z can share and get Z". Make the choices feel like real product ideas, not abstract categories.
+- Q6: Uncover the monetization angle and business model
+- Q7: Final clarifying question that reveals founder's edge or commitment
+- Q8+: Generate the brief — use all answers to make every field specific to THIS founder's exact idea. Reference the product form, customer, and domain explicitly. The brief should feel like a real product spec, not a template.
 
-Make each question feel like a mentor finding the idea, not a form to fill out.`
+Make each question feel like a sharp mentor finding the idea, not a form to fill out.`
 
       const historyText = history.length === 0
         ? 'No previous answers yet.'

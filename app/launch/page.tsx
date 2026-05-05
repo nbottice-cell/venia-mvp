@@ -131,6 +131,9 @@ export default function LaunchPage() {
   const [qbHistory, setQbHistory] = useState<{question: string, answer: string}[]>([])
   const [qbQuestion, setQbQuestion] = useState<{tag: string, question: string, choices: string[]} | null>(null)
   const [qbLoading, setQbLoading] = useState(false)
+  const [qbHoveredChoice, setQbHoveredChoice] = useState<number | null>(null)
+  const [qbOtherMode, setQbOtherMode] = useState(false)
+  const [qbOtherText, setQbOtherText] = useState('')
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const pitchEndRef = useRef<HTMLDivElement>(null)
@@ -280,6 +283,9 @@ export default function LaunchPage() {
     setQbHistory([])
     setQbQuestion(null)
     setQbLoading(true)
+    setQbOtherMode(false)
+    setQbOtherText('')
+    setQbHoveredChoice(null)
     try {
       const result = await aiCall('quick_build', { history: [], questionNumber: 0 })
       setQbQuestion(result as {tag: string, question: string, choices: string[]})
@@ -296,6 +302,9 @@ export default function LaunchPage() {
     const newHistory = [...qbHistory, { question: qbQuestion.question, answer: choice }]
     setQbHistory(newHistory)
     setQbQuestion(null)
+    setQbOtherMode(false)
+    setQbOtherText('')
+    setQbHoveredChoice(null)
     setQbLoading(true)
     try {
       const result = await aiCall('quick_build', { history: newHistory, questionNumber: newHistory.length })
@@ -815,17 +824,57 @@ export default function LaunchPage() {
                   <button
                     key={i}
                     onClick={() => selectQbChoice(choice)}
-                    style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.22)', borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(201,168,76,0.16)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.55)'; e.currentTarget.style.transform = 'translateX(4px)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#18222E'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)'; e.currentTarget.style.transform = 'translateX(0)' }}
+                    onMouseEnter={() => setQbHoveredChoice(i)}
+                    onMouseLeave={() => setQbHoveredChoice(null)}
+                    style={{ background: qbHoveredChoice === i ? 'rgba(201,168,76,0.16)' : '#18222E', border: `1px solid ${qbHoveredChoice === i ? 'rgba(201,168,76,0.55)' : 'rgba(201,168,76,0.22)'}`, borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s', transform: qbHoveredChoice === i ? 'translateX(4px)' : 'translateX(0)' }}
                   >
                     <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(201,168,76,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', flexShrink: 0 }}>
                       {String.fromCharCode(65 + i)}
                     </div>
-                    <div style={{ fontSize: '14px', color: '#EEE8D8', lineHeight: '1.5' }}>{choice}</div>
+                    <div style={{ fontSize: '14px', color: qbHoveredChoice === i ? '#1a3a5c' : '#EEE8D8', lineHeight: '1.5', transition: 'color 0.18s' }}>{choice}</div>
                     <div style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.6)', fontSize: '14px' }}>→</div>
                   </button>
                 ))}
+
+                {/* Other option */}
+                {!qbOtherMode ? (
+                  <button
+                    onMouseEnter={() => setQbHoveredChoice(-1)}
+                    onMouseLeave={() => setQbHoveredChoice(null)}
+                    onClick={() => setQbOtherMode(true)}
+                    style={{ background: qbHoveredChoice === -1 ? 'rgba(201,168,76,0.16)' : '#18222E', border: `1px solid ${qbHoveredChoice === -1 ? 'rgba(201,168,76,0.55)' : 'rgba(201,168,76,0.22)'}`, borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.18s', transform: qbHoveredChoice === -1 ? 'translateX(4px)' : 'translateX(0)' }}
+                  >
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(201,168,76,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#C9A84C', flexShrink: 0 }}>
+                      ✎
+                    </div>
+                    <div style={{ fontSize: '14px', color: qbHoveredChoice === -1 ? '#1a3a5c' : '#8E8B7A', lineHeight: '1.5', fontStyle: 'italic', transition: 'color 0.18s' }}>Other — write your own answer</div>
+                    <div style={{ marginLeft: 'auto', color: 'rgba(201,168,76,0.6)', fontSize: '14px' }}>→</div>
+                  </button>
+                ) : (
+                  <div style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.4)', borderRadius: '12px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <textarea
+                      autoFocus
+                      value={qbOtherText}
+                      onChange={e => setQbOtherText(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && qbOtherText.trim()) { e.preventDefault(); selectQbChoice(qbOtherText.trim()) } }}
+                      placeholder="Describe your specific situation…"
+                      rows={3}
+                      style={{ width: '100%', background: 'rgba(17,25,35,0.6)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '8px', padding: '10px 12px', color: '#EEE8D8', fontSize: '14px', fontFamily: "'Plus Jakarta Sans', sans-serif", lineHeight: '1.6', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => { if (qbOtherText.trim()) selectQbChoice(qbOtherText.trim()) }}
+                        disabled={!qbOtherText.trim()}
+                        style={{ ...goldBtn, padding: '10px 20px', fontSize: '12px', opacity: qbOtherText.trim() ? 1 : 0.4 }}
+                      >
+                        Submit →
+                      </button>
+                      <button onClick={() => { setQbOtherMode(false); setQbOtherText('') }} style={{ ...ghostBtn, padding: '10px 18px', fontSize: '12px' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {qbHistory.length > 0 && (
@@ -833,6 +882,9 @@ export default function LaunchPage() {
                   onClick={() => {
                     const prev = qbHistory.slice(0, -1)
                     setQbHistory(prev)
+                    setQbOtherMode(false)
+                    setQbOtherText('')
+                    setQbHoveredChoice(null)
                     setQbLoading(true)
                     aiCall('quick_build', { history: prev, questionNumber: prev.length })
                       .then(r => setQbQuestion(r as {tag: string, question: string, choices: string[]}))
