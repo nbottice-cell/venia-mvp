@@ -134,6 +134,8 @@ export default function LaunchPage() {
   const [qbHoveredChoice, setQbHoveredChoice] = useState<number | null>(null)
   const [qbOtherMode, setQbOtherMode] = useState(false)
   const [qbOtherText, setQbOtherText] = useState('')
+  const [qbBriefs, setQbBriefs] = useState<Brief[] | null>(null)
+  const [qbQuestionCache, setQbQuestionCache] = useState<{tag: string, question: string, choices: string[]}[]>([])
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const pitchEndRef = useRef<HTMLDivElement>(null)
@@ -282,13 +284,17 @@ export default function LaunchPage() {
     setStage('quickbuild')
     setQbHistory([])
     setQbQuestion(null)
+    setQbBriefs(null)
+    setQbQuestionCache([])
     setQbLoading(true)
     setQbOtherMode(false)
     setQbOtherText('')
     setQbHoveredChoice(null)
     try {
       const result = await aiCall('quick_build', { history: [], questionNumber: 0 })
-      setQbQuestion(result as {tag: string, question: string, choices: string[]})
+      const q = result as {tag: string, question: string, choices: string[]}
+      setQbQuestion(q)
+      setQbQuestionCache([q])
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error'
       alert('Quick Build failed: ' + msg)
@@ -309,11 +315,13 @@ export default function LaunchPage() {
     try {
       const result = await aiCall('quick_build', { history: newHistory, questionNumber: newHistory.length })
       const res = result as {type: string}
-      if (res.type === 'brief') {
-        setBrief(result as Brief)
-        setStage('brief')
+      if (res.type === 'briefs') {
+        const { ideas } = result as { type: string, ideas: Brief[] }
+        setQbBriefs(ideas)
       } else {
-        setQbQuestion(result as {tag: string, question: string, choices: string[]})
+        const q = result as {tag: string, question: string, choices: string[]}
+        setQbQuestion(q)
+        setQbQuestionCache(prev => [...prev.slice(0, newHistory.length), q])
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error'
@@ -345,6 +353,35 @@ export default function LaunchPage() {
       })
       if (error) throw error
       router.push('/browse')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      alert('Error saving: ' + message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveForLater() {
+    setSaving(true)
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) { router.push('/auth'); return }
+      if (!brief) return
+      const { error } = await supabase.from('ideas').insert({
+        user_id: userData.user.id,
+        name: ideaName || brief.names[0],
+        pitch: brief.pitch,
+        problem: brief.problem,
+        solution: brief.solution,
+        why_now: brief.whyNow,
+        path: 'build',
+        framework: framework || 'guided',
+        raw_idea: rawIdea || null,
+        answers,
+        status: 'draft',
+      })
+      if (error) throw error
+      router.push('/ideas')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       alert('Error saving: ' + message)
@@ -610,6 +647,17 @@ export default function LaunchPage() {
                   <button onClick={() => saveIdea('build')} disabled={saving} style={{ ...goldBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '⚡ Build Mode'}</button>
                   <button onClick={() => saveIdea('license')} disabled={saving} style={{ ...tealBtn, padding: '13px', width: '100%' }}>{saving ? 'Saving…' : '🏛️ License Mode'}</button>
                 </div>
+                <div style={{ padding: '0 24px 12px 24px' }}>
+                  <button
+                    onClick={saveForLater}
+                    disabled={saving}
+                    style={{ width: '100%', background: 'none', border: '1px solid rgba(201,168,76,0.22)', borderRadius: '9px', padding: '11px', cursor: 'pointer', color: '#C9A84C', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: '600', transition: 'all 0.18s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,168,76,0.08)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)' }}
+                  >
+                    {saving ? 'Saving…' : '🔖 Save for Later — add to My Ideas'}
+                  </button>
+                </div>
                 <div style={{ padding: '0 24px 14px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.08em', color: 'rgba(201,168,76,0.3)' }}>Saved as draft — you choose when to publish</div>
               </div>
             </>
@@ -809,8 +857,54 @@ export default function LaunchPage() {
             </div>
           )}
 
+          {/* Idea Selection — pick from 3-4 generated briefs */}
+          {!qbLoading && qbBriefs && (
+            <>
+              <div style={{ ...card, marginBottom: '20px' }}>
+                <div style={eyebrow}>Your Ideas Are Ready</div>
+                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: '400', color: '#EEE8D8', lineHeight: '1.5', letterSpacing: '-0.01em', margin: 0 }}>
+                  Which direction feels right?
+                </p>
+                <p style={{ fontSize: '12px', color: '#8E8B7A', marginTop: '8px', marginBottom: 0, lineHeight: '1.6' }}>We built {qbBriefs.length} distinct ideas from your answers. Pick the one that resonates — you can refine it next.</p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+                {qbBriefs.map((idea, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setBrief(idea); setStage('brief') }}
+                    style={{ background: '#18222E', border: '1px solid rgba(201,168,76,0.22)', borderRadius: '14px', padding: '20px 22px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.18s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,168,76,0.1)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.5)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#18222E'; e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)'; e.currentTarget.style.transform = 'translateY(0)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8px', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#C9A84C', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '4px', padding: '2px 7px' }}>Idea {i + 1}</div>
+                    </div>
+                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '17px', fontWeight: '600', color: '#EEE8D8', marginBottom: '6px', lineHeight: '1.3' }}>{idea.names[0]}</div>
+                    <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.6', fontStyle: 'italic', marginBottom: '10px' }}>{idea.pitch}</p>
+                    <p style={{ fontSize: '12px', color: '#8E8B7A', lineHeight: '1.65', margin: 0 }}>{idea.solution.split('.')[0]}.</p>
+                    <div style={{ marginTop: '12px', fontSize: '11px', color: 'rgba(201,168,76,0.7)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em' }}>Build this idea →</div>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  setQbBriefs(null)
+                  const prev = qbHistory.slice(0, -1)
+                  setQbHistory(prev)
+                  setQbQuestion(qbQuestionCache[prev.length] || null)
+                  setQbQuestionCache(c => c.slice(0, prev.length + 1))
+                }}
+                style={ghostBtn}
+              >
+                ← Change my last answer
+              </button>
+            </>
+          )}
+
           {/* Question + Choices */}
-          {!qbLoading && qbQuestion && (
+          {!qbLoading && !qbBriefs && qbQuestion && (
             <>
               <div style={{ ...card, marginBottom: '16px' }}>
                 <div style={eyebrow}>{qbQuestion.tag}</div>
@@ -885,11 +979,8 @@ export default function LaunchPage() {
                     setQbOtherMode(false)
                     setQbOtherText('')
                     setQbHoveredChoice(null)
-                    setQbLoading(true)
-                    aiCall('quick_build', { history: prev, questionNumber: prev.length })
-                      .then(r => setQbQuestion(r as {tag: string, question: string, choices: string[]}))
-                      .catch(() => {})
-                      .finally(() => setQbLoading(false))
+                    setQbQuestion(qbQuestionCache[prev.length] || null)
+                    setQbQuestionCache(c => c.slice(0, prev.length + 1))
                   }}
                   style={ghostBtn}
                 >

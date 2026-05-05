@@ -292,8 +292,8 @@ ALWAYS respond with ONLY valid JSON. No markdown. No explanation outside the JSO
 If questionNumber < 7: respond with:
 { "type": "question", "tag": "short 2-3 word label", "question": "one focused question (not too long)", "choices": ["specific choice A", "specific choice B", "specific choice C", "specific choice D"] }
 
-If questionNumber >= 7: respond with:
-{ "type": "brief", "names": ["name1", "name2", "name3"], "pitch": "one compelling sentence that describes the product and its core value", "problem": "3-4 sentences — describe the pain point in vivid, specific terms. Who feels it, when, and why existing solutions fail them.", "solution": "3-4 sentences — describe the actual product or platform in concrete terms: what it does, how it works, what makes it different. Name the specific features or experience.", "customer": "2-3 sentences — paint a clear portrait of the target user: their role, habits, frustrations, and why they are ready to pay.", "whyNow": "2-3 sentences — explain the market timing: what shift (tech, behavior, regulation, culture) makes this the right moment.", "unfairAdvantage": "2-3 sentences — what does this founder know, feel, or have access to that a generic team could not replicate?" }
+If questionNumber >= 7: respond with 3-4 meaningfully distinct idea directions derived from the same answers. Each idea should take a different product angle (e.g. mobile app vs SaaS platform vs marketplace vs community tool). Respond with:
+{ "type": "briefs", "ideas": [ { "names": ["Product Name", "Alt Name"], "pitch": "one compelling sentence", "problem": "3-4 sentences describing the pain point vividly — who feels it, when, why existing tools fail", "solution": "3-4 sentences on what the product actually does, how it works, what makes it different — be specific about features and UX", "customer": "2-3 sentences painting a clear portrait of the target user: their role, habits, frustrations, readiness to pay", "whyNow": "2-3 sentences on market timing — what tech, behavior, or culture shift makes this the right moment", "unfairAdvantage": "2-3 sentences on what this specific founder knows or has that a generic team could not replicate" }, ... 3 more ideas ] }
 
 Question guidelines:
 - Q1: What is driving this idea? (broad starting angle)
@@ -309,9 +309,9 @@ Make each question feel like a sharp mentor finding the idea, not a form to fill
         ? 'No previous answers yet.'
         : history.map((h, i) => `Q${i + 1}: ${h.question}\nAnswer: ${h.answer}`).join('\n\n')
 
-      const user = `Quick Build session — questionNumber: ${questionNumber}\n\nPrevious Q&A:\n${historyText}\n\n${questionNumber >= 7 ? 'Generate the complete Idea Brief based on all answers above.' : 'Ask the next question with 3-4 tappable choices.'}\n\nRespond with ONLY the JSON.`
+      const user = `Quick Build session — questionNumber: ${questionNumber}\n\nPrevious Q&A:\n${historyText}\n\n${questionNumber >= 7 ? 'Generate 3-4 distinct idea briefs based on all answers above. Each should take a different product form (mobile app, SaaS, marketplace, community platform, etc). Make each feel like a real, specific product — not a template.' : 'Ask the next question with 3-4 tappable choices.'}\n\nRespond with ONLY the JSON.`
 
-      const result = await callClaude(system, user, questionNumber >= 7 ? 2048 : 512)
+      const result = await callClaude(system, user, questionNumber >= 7 ? 5000 : 512)
       return NextResponse.json({ success: true, data: parseJSON(result) })
     }
 
