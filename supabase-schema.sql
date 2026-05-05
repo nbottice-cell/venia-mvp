@@ -97,6 +97,29 @@ create trigger ideas_updated_at
   before update on public.ideas
   for each row execute procedure public.handle_updated_at();
 
+-- IDEA COMMENTS TABLE
+create table if not exists public.idea_comments (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz default now(),
+  idea_id      text not null,
+  user_id      uuid references auth.users(id) on delete cascade not null,
+  display_name text not null default 'Member',
+  body         text not null
+);
+
+alter table public.idea_comments enable row level security;
+
+create policy "Comments are viewable by everyone"
+  on public.idea_comments for select using (true);
+
+create policy "Users can insert their own comments"
+  on public.idea_comments for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own comments"
+  on public.idea_comments for delete
+  using (auth.uid() = user_id);
+
 -- JOURNAL ENTRIES TABLE
 create table if not exists public.journal_entries (
   id         uuid primary key default gen_random_uuid(),

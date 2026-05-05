@@ -6,6 +6,14 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+type Comment = {
+  id: string
+  created_at: string
+  user_id: string
+  display_name: string
+  body: string
+}
+
 type Idea = {
   id: string
   name: string
@@ -48,6 +56,11 @@ export default function BrowsePage() {
   const [fundAmount, setFundAmount] = useState('')
   const [fundDone, setFundDone] = useState(false)
   const [detailIdea, setDetailIdea] = useState<Idea | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [submittingComment, setSubmittingComment] = useState(false)
+  const [currentUserName, setCurrentUserName] = useState('Member')
 
   useEffect(() => {
     async function load() {
@@ -55,17 +68,25 @@ export default function BrowsePage() {
       if (!userData.user) { router.push('/auth'); return }
       setCurrentUserId(userData.user.id)
 
-      const { data } = await supabase
-        .from('ideas')
-        .select('id, name, pitch, problem, solution, customer, why_now, unfair_advantage, path, framework, upvotes, downvotes, created_at, user_id')
-        .order('upvotes', { ascending: false })
+      const [{ data }, { data: profile }] = await Promise.all([
+        supabase.from('ideas').select('id, name, pitch, problem, solution, customer, why_now, unfair_advantage, path, framework, upvotes, downvotes, created_at, user_id').order('upvotes', { ascending: false }),
+        supabase.from('profiles').select('full_name').eq('id', userData.user.id).single(),
+      ])
 
+      if (profile?.full_name) setCurrentUserName(profile.full_name)
       const real = (data || []) as Idea[]
       setIdeas([...real, ...EXAMPLE_IDEAS])
       setLoading(false)
     }
     load()
   }, [router])
+
+  useEffect(() => {
+    if (!detailIdea) { setComments([]); setNewComment(''); return }
+    setCommentsLoading(true)
+    supabase.from('idea_comments').select('id, created_at, user_id, display_name, body').eq('idea_id', detailIdea.id).order('created_at', { ascending: true })
+      .then(({ data }) => { setComments((data || []) as Comment[]); setCommentsLoading(false) })
+  }, [detailIdea])
 
   const filtered = ideas.filter(idea => {
     const matchFilter = filter === 'all' || idea.path === filter
@@ -79,6 +100,22 @@ export default function BrowsePage() {
     if (upvotes >= 25)  return { label: 'Gaining Steam', icon: '🔥', color: '#F97316', bg: 'rgba(249,115,22,0.1)', border: 'rgba(249,115,22,0.25)' }
     if (upvotes >= 10)  return { label: 'Early Signal', icon: '🌱', color: '#4ADE80', bg: 'rgba(74,222,128,0.1)', border: 'rgba(74,222,128,0.25)' }
     return null
+  }
+
+  async function submitComment() {
+    if (!newComment.trim() || submittingComment || !currentUserId || !detailIdea) return
+    setSubmittingComment(true)
+    const body = newComment.trim()
+    setNewComment('')
+    const { data, error } = await supabase.from('idea_comments')
+      .insert({ idea_id: detailIdea.id, user_id: currentUserId, display_name: currentUserName, body })
+      .select('id, created_at, user_id, display_name, body').single()
+    if (!error && data) {
+      setComments(prev => [...prev, data as Comment])
+    } else {
+      setNewComment(body) // restore on failure
+    }
+    setSubmittingComment(false)
   }
 
   async function vote(ideaId: string, type: 'up' | 'down') {
@@ -302,6 +339,61 @@ export default function BrowsePage() {
                 ) : (
                   <button onClick={() => { setDetailIdea(null); router.push(`/ideas/${detailIdea.id}`) }} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '12px 20px', borderRadius: '9px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Edit your idea →</button>
                 )}
+              </div>
+
+              {/* ── COMMENTS ── */}
+              <div style={{ height: '1px', background: 'rgba(201,168,76,0.1)', margin: '24px 0' }} />
+              <div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9px', letterSpacing: '0.2em', textTransform: 'uppercase' as const, color: 'rgba(201,168,76,0.6)', marginBottom: '16px' }}>
+                  💬 Comments {comments.length > 0 && `(${comments.length})`}
+                </div>
+
+                {/* Comment list */}
+                {commentsLoading ? (
+                  <div style={{ fontSize: '12px', color: '#8E8B7A', padding: '12px 0', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Loading…</div>
+                ) : comments.length === 0 ? (
+                  <div style={{ fontSize: '13px', color: '#8E8B7A', padding: '12px 0 16px', fontStyle: 'italic' }}>No comments yet. Be the first to share your thoughts.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                    {comments.map(c => (
+                      <div key={c.id} style={{ background: 'rgba(17,25,35,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                          <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: c.user_id === currentUserId ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.08)', border: `1px solid ${c.user_id === currentUserId ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: c.user_id === currentUserId ? '#C9A84C' : '#8E8B7A', fontWeight: '700', flexShrink: 0 }}>
+                            {c.display_name.charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: c.user_id === currentUserId ? '#C9A84C' : '#C8C4B4' }}>
+                            {c.user_id === currentUserId ? 'You' : c.display_name}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#8E8B7A', fontFamily: "'JetBrains Mono', monospace", marginLeft: 'auto' }}>
+                            {new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '13px', color: '#C8C4B4', lineHeight: '1.65', margin: 0 }}>{c.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* New comment input */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                  <textarea
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && newComment.trim()) { e.preventDefault(); submitComment() } }}
+                    placeholder="Share your thoughts on this idea…"
+                    rows={2}
+                    style={{ flex: 1, background: 'rgba(17,25,35,0.7)', border: '1px solid rgba(201,168,76,0.18)', borderRadius: '10px', padding: '10px 13px', color: '#EEE8D8', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', sans-serif", lineHeight: '1.6', resize: 'none', outline: 'none', boxSizing: 'border-box' as const }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(201,168,76,0.4)' }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(201,168,76,0.18)' }}
+                  />
+                  <button
+                    onClick={submitComment}
+                    disabled={!newComment.trim() || submittingComment}
+                    style={{ background: newComment.trim() ? 'linear-gradient(135deg, #C9A84C, #E2C06A)' : 'rgba(201,168,76,0.15)', color: newComment.trim() ? '#111923' : '#8E8B7A', border: 'none', padding: '10px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: newComment.trim() ? 'pointer' : 'default', fontFamily: "'Plus Jakarta Sans', sans-serif", flexShrink: 0, transition: 'all 0.15s' }}
+                  >
+                    {submittingComment ? '…' : 'Post'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
