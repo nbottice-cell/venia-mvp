@@ -47,7 +47,7 @@ export default function BrowsePage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'build' | 'license'>('all')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [voted, setVoted] = useState<Record<string, 'up'>>({})
+  const [voted, setVoted] = useState<Record<string, 'up' | 'down'>>({})
   const [voting, setVoting] = useState<string | null>(null)
   const [investModal, setInvestModal] = useState<Idea | null>(null)
   const [investAmount, setInvestAmount] = useState('')
@@ -127,16 +127,28 @@ export default function BrowsePage() {
     if (existing === type) return // already voted this way
 
     // Optimistic update — apply to UI immediately
+    // Clicking the opposite direction undoes the current vote (no net double-change)
     const updates: { upvotes?: number, downvotes?: number } = {}
+    const isUndo = (type === 'up' && existing === 'down') || (type === 'down' && existing === 'up')
     if (type === 'up') {
-      updates.upvotes = (idea.upvotes || 0) + 1
-      if (existing === 'down') updates.downvotes = Math.max(0, (idea.downvotes || 0) - 1)
+      if (existing === 'down') {
+        updates.downvotes = Math.max(0, (idea.downvotes || 0) - 1) // undo downvote only
+      } else {
+        updates.upvotes = (idea.upvotes || 0) + 1 // fresh upvote
+      }
     } else {
-      updates.downvotes = (idea.downvotes || 0) + 1
-      if (existing === 'up') updates.upvotes = Math.max(0, (idea.upvotes || 0) - 1)
+      if (existing === 'up') {
+        updates.upvotes = Math.max(0, (idea.upvotes || 0) - 1) // undo upvote only
+      } else {
+        updates.downvotes = (idea.downvotes || 0) + 1 // fresh downvote
+      }
     }
     setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, ...updates } : i))
-    setVoted(prev => ({ ...prev, [ideaId]: type }))
+    if (isUndo) {
+      setVoted(prev => { const n = { ...prev }; delete n[ideaId]; return n })
+    } else {
+      setVoted(prev => ({ ...prev, [ideaId]: type }))
+    }
 
     // Persist to DB for real ideas only
     if (!idea.isExample) {
