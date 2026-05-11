@@ -315,6 +315,36 @@ Make each question feel like a sharp mentor finding the idea, not a form to fill
       return NextResponse.json({ success: true, data: parseJSON(result) })
     }
 
+    // ════════════════════════════════════════
+    // ACTION: company_comparison
+    // Honest look at what happened to 5 similar companies
+    // ════════════════════════════════════════
+    if (action === 'company_comparison') {
+      const { brief } = payload
+
+      const system = `You are Venia AI providing an honest, research-grounded comparison of real companies that built something similar to this founder's idea. You are direct and unsparing — this is not about discouraging founders, it is about giving them real intelligence so they can learn from what came before. Use real companies where possible. If you use a representative example, say so. Respond with ONLY a valid JSON object. No markdown.`
+
+      const user = `Find 5 real (or representative) companies that built something similar to or in the same space as this idea.
+
+Idea: "${brief.pitch}"
+Problem: "${brief.problem}"
+Solution: "${brief.solution}"
+Customer: "${brief.customer}"
+
+Return a JSON object with the key "companies" containing an array of exactly 5 objects. Each object has:
+- "name": the company name
+- "founded": approximate year founded (e.g. "2015") or "Unknown"
+- "built": 1 sentence on what they built — be specific about what the product actually was
+- "outcome": one of exactly these values: "Acquired" | "Failed" | "Pivoted" | "Succeeded" | "Still Running"
+- "what_happened": 2 sentences — what actually happened to this company, honest and specific. Include funding raised or not raised, key inflection point, who acquired them or why they failed.
+- "lesson": 1 sentence — the single most actionable lesson for THIS founder from what happened to this company.
+
+Order from most to least relevant to the founder's idea. Be honest. If a company failed, say why clearly. ONLY JSON.`
+
+      const result = await callClaude(system, user, 2048)
+      return NextResponse.json({ success: true, data: parseJSON(result) })
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 })
 
   } catch (error: unknown) {
